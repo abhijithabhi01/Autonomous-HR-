@@ -101,7 +101,7 @@ serve(async (req) => {
   <div style="max-width:560px;margin:40px auto;background:#0C1A1D;border:1px solid rgba(20,184,166,0.15);border-radius:16px;overflow:hidden;">
     <div style="background:linear-gradient(135deg,rgba(20,184,166,0.15),rgba(6,182,212,0.05));padding:32px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.05);">
       <div style="display:inline-block;background:rgba(20,184,166,0.1);border:1px solid rgba(20,184,166,0.2);border-radius:12px;padding:12px 20px;margin-bottom:16px;">
-        <span style="color:#2DD4BF;font-size:18px;font-weight:700;">PeopleOS</span>
+        <span style="color:#2DD4BF;font-size:18px;font-weight:700;">D Company</span>
       </div>
       <h1 style="color:#fff;font-size:22px;font-weight:700;margin:0 0 8px;">Welcome to the team, ${candidateName.split(" ")[0]}! 🎉</h1>
       <p style="color:#94A3B8;font-size:14px;margin:0;">You've been added as ${position} · ${department}</p>
@@ -142,7 +142,7 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: "PeopleOS <onboarding@resend.dev>",
+        from: "D Company <onboarding@resend.dev>",
         to: [sendTo],
         subject: `Welcome to the team, ${candidateName.split(" ")[0]}! Your onboarding details inside`,
         html: emailHtml,
