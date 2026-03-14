@@ -15,6 +15,8 @@ import Candidates from './pages/hr/Candidates'
 // Employee / candidate onboarding routes
 import EmployeeLayout from './pages/employee/EmployeeLayout'
 import Welcome        from './pages/employee/Welcome'
+import ProfileCompletion from './pages/employee/ProfileCompletion'
+import TermsAndConditions from './pages/employee/TermsAndConditions'
 import Documents      from './pages/employee/Documents'
 import Checklist      from './pages/employee/Checklist'
 import PolicyBot      from './pages/employee/PolicyBot'
@@ -61,6 +63,8 @@ export default function App() {
           <ProtectedRoute role="employee"><EmployeeLayout /></ProtectedRoute>
         }>
           <Route index element={<Welcome />} />
+          <Route path="profile" element={<ProfileCompletion />} />
+          <Route path="terms" element={<TermsAndConditions />} />
           <Route path="documents" element={<Documents />} />
           <Route path="checklist" element={<Checklist />} />
           <Route path="policy" element={<PolicyBot />} />

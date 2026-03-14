@@ -4,14 +4,6 @@ import { useCandidate, useChecklist, useDocuments } from '../../hooks/useData'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 
-const SCHEDULE = [
-  { time: '9:00 AM',  title: 'Welcome Meeting',       with: 'Your Manager',         done: true },
-  { time: '10:30 AM', title: 'Office Tour',            with: 'Buddy assigned by HR', done: true },
-  { time: '12:00 PM', title: 'Team Lunch',             with: 'Your Department',      done: true },
-  { time: '2:00 PM',  title: 'IT Setup Session',       with: 'IT Department',        done: false },
-  { time: '4:00 PM',  title: 'First Project Briefing', with: 'Your Manager',         done: false },
-]
-
 function getGreeting() {
   const h = new Date().getHours()
   return h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening'
@@ -89,7 +81,7 @@ export default function Welcome() {
       </div>
 
       {/* Bottom grid: stacks on mobile */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid  gap-4 sm:gap-6">
         {/* Next steps */}
         <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-4 sm:p-5 animate-slide-up opacity-0"
           style={{ animationDelay: '100ms', animationFillMode: 'forwards' }}>
@@ -138,36 +130,7 @@ export default function Welcome() {
           </div>
         </div>
 
-        {/* Day 1 schedule */}
-        <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-4 sm:p-5 animate-slide-up opacity-0"
-          style={{ animationDelay: '200ms', animationFillMode: 'forwards' }}>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display font-semibold text-white text-sm sm:text-base">Today's Schedule</h2>
-            <p className="text-xs text-slate-500">Day 1</p>
-          </div>
-          <div className="space-y-1">
-            {SCHEDULE.map((item, i) => (
-              <div key={i} className={`flex items-start gap-3 p-2.5 sm:p-3 rounded-xl ${item.done ? 'opacity-40' : 'bg-white/[0.02]'}`}>
-                <div className="flex flex-col items-center">
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center border flex-shrink-0
-                    ${item.done ? 'bg-emerald-500/20 border-emerald-500/40' : 'bg-teal-500/10 border-teal-500/30'}`}>
-                    {item.done
-                      ? <span className="text-emerald-400 text-[9px] font-bold">✓</span>
-                      : <span className="w-1.5 h-1.5 rounded-full bg-teal-400" />}
-                  </div>
-                  {i < SCHEDULE.length - 1 && <div className="w-px h-3 bg-white/[0.05] mt-1" />}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <p className={`text-sm font-medium ${item.done ? 'line-through text-slate-500' : 'text-slate-200'}`}>{item.title}</p>
-                    <span className="text-[10px] text-slate-600">{item.time}</span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">{item.with}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+
       </div>
     </div>
   )

@@ -6,9 +6,11 @@ import Avatar from '../../components/shared/Avatar'
 import ProgressBar from '../../components/shared/ProgressBar'
 
 const NAV = [
-  { to: '/onboarding',           label: 'Welcome',    icon: '🏠', exact: true },
-  { to: '/onboarding/documents', label: 'Documents',  icon: '📄' },
-  { to: '/onboarding/checklist', label: 'Checklist',  icon: '✅' },
+  { to: '/onboarding',           label: 'Welcome',   icon: '🎊', exact: true },
+  { to: '/onboarding/profile',   label: 'Profile',   icon: '👤' },
+  { to: '/onboarding/terms',     label: 'Terms',     icon: '📋' },
+  { to: '/onboarding/documents', label: 'Documents', icon: '📄' },
+  { to: '/onboarding/checklist', label: 'Checklist', icon: '✅' },
   { to: '/onboarding/policy',    label: 'Ask HR Bot', icon: '💬' },
 ]
 

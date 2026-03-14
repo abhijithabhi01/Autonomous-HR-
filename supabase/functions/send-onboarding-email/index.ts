@@ -1,7 +1,3 @@
-// supabase/functions/send-onboarding-email/index.js
-// JavaScript version (instead of TypeScript)
-// Deploy: npx supabase functions deploy send-onboarding-email --no-verify-jwt
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
@@ -72,7 +68,7 @@ serve(async (req) => {
 
     // ── 3. Send welcome email via Resend ─────────────────────────
     const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY")
-    const PORTAL_URL = Deno.env.get("PORTAL_URL") || "http://localhost:5173"
+    const PORTAL_URL = Deno.env.get("PORTAL_URL") || "https://autonomous-hr-onboarding-agent-fron.vercel.app"
     const sendTo = personalEmail || workEmail
 
     console.log("📧 Attempting to send email to:", sendTo)
