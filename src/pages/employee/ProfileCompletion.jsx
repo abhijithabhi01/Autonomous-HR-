@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useCompleteChecklistByTitle } from '../../hooks/useData'
 import { supabase } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function ProfileCompletion() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const completeByTitle = useCompleteChecklistByTitle()
   const [loading, setLoading] = useState(false)
   const [loadingProfile, setLoadingProfile] = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -236,7 +238,18 @@ export default function ProfileCompletion() {
 
       console.log('Update successful:', data)
 
-      toast.success('Profile completed!')
+      toast.success('Profile completed! ✅')
+
+      // Auto-tick 'Profile Completed' checklist item
+      completeByTitle.mutate({ candidateId, title: 'Profile Completed', description: 'Personal profile and photo uploaded', category: 'hr', sort_order: 0 })
+
+      // Move candidate status to 'onboarding' if still pre_joining
+      await supabase
+        .from('candidates')
+        .update({ onboarding_status: 'onboarding', onboarding_progress: 10 })
+        .eq('id', candidateId)
+        .eq('onboarding_status', 'pre_joining')
+
       navigate('/onboarding/terms')
     } catch (err) {
       console.error('Profile update error:', err)

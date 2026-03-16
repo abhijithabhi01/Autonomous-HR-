@@ -1,5 +1,6 @@
+import { useEffect, useRef } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { useChecklist, useToggleChecklist } from '../../hooks/useData'
+import { useChecklist, useToggleChecklist, useMarkOnboardingComplete } from '../../hooks/useData'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import toast from 'react-hot-toast'
@@ -17,10 +18,20 @@ const CATEGORY_META = {
 export default function Checklist() {
   const { user } = useAuth()
   const { data: items = [], isLoading } = useChecklist(user?.candidate_id)
-  const toggleMutation = useToggleChecklist()
+  const toggleMutation  = useToggleChecklist()
+  const markComplete    = useMarkOnboardingComplete()
+  const markedRef       = useRef(false)
 
   const completed = items.filter(i => i.completed).length
   const pct = items.length > 0 ? Math.round((completed / items.length) * 100) : 0
+
+  // Auto-mark onboarding complete the first time pct hits 100
+  useEffect(() => {
+    if (pct === 100 && !markedRef.current && user?.candidate_id) {
+      markedRef.current = true
+      markComplete.mutate(user.candidate_id)
+    }
+  }, [pct, user?.candidate_id])
 
   const toggle = (item) => {
     if (toggleMutation.isPending) return
@@ -67,8 +78,28 @@ export default function Checklist() {
         </div>
         <ProgressBar value={pct} showLabel={false} size="lg" />
         {pct === 100 && (
-          <div className="mt-4 p-3 bg-teal-500/10 border border-teal-500/20 rounded-xl text-center">
-            <p className="text-teal-400 font-semibold text-sm">🎉 Onboarding complete! Welcome aboard.</p>
+          <div className="mt-5 rounded-2xl border border-teal-500/20 bg-teal-500/5 overflow-hidden">
+            {/* Confetti bar */}
+            <div className="h-1.5 w-full bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400" />
+            <div className="p-5 text-center">
+              <div className="text-4xl mb-2">🎉</div>
+              <p className="font-display font-bold text-white text-lg">Onboarding Complete!</p>
+              <p className="text-slate-400 text-sm mt-1">
+                You have completed every step. HR has been notified and will be in touch shortly.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs">
+                {[
+                  { icon: '✅', label: 'Profile saved' },
+                  { icon: '✍️', label: 'Contract signed' },
+                  { icon: '📄', label: 'Docs submitted' },
+                  { icon: '🤖', label: 'AI verified' },
+                ].map(b => (
+                  <span key={b.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium">
+                    {b.icon} {b.label}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

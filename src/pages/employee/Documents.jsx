@@ -1,10 +1,10 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDropzone } from 'react-dropzone'
 import toast from 'react-hot-toast'
 import StatusBadge from '../../components/shared/StatusBadge'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useAuth } from '../../hooks/useAuth'
-import { useDocuments, useUploadDocument } from '../../hooks/useData'
+import { useDocuments, useUploadDocument, useCompleteChecklistByTitle } from '../../hooks/useData'
 import { verifyDocument } from '../../lib/ai'
 
 // ── Document type config ──────────────────────────────────────
@@ -52,10 +52,30 @@ const DOC_TYPES = [
   {
     type: 'bank_details', label: 'Bank Account Details', icon: '🏦', required: false,
     fields: [
-      { key: 'account_holder', label: 'Account Holder' },
-      { key: 'bank_name',      label: 'Bank Name' },
-      { key: 'account_type',   label: 'Account Type' },
-      { key: 'iban_last4',     label: 'IBAN (last 4)' },
+      { key: 'account_holder',  label: 'Account Holder' },
+      { key: 'bank_name',       label: 'Bank Name' },
+      { key: 'account_type',    label: 'Account Type' },
+      { key: 'account_number',  label: 'Account Number' },
+      { key: 'ifsc_code',       label: 'IFSC Code' },
+    ],
+  },
+  {
+    type: 'aadhaar', label: 'Aadhaar Card', icon: '🪪', required: false,
+    fields: [
+      { key: 'name',          label: 'Full Name' },
+      { key: 'aadhaar_number',label: 'Aadhaar Number' },
+      { key: 'date_of_birth', label: 'Date of Birth' },
+      { key: 'gender',        label: 'Gender' },
+      { key: 'address',       label: 'Address' },
+    ],
+  },
+  {
+    type: 'pan_card', label: 'PAN Card', icon: '💳', required: false,
+    fields: [
+      { key: 'name',        label: 'Name' },
+      { key: 'pan_number',  label: 'PAN Number' },
+      { key: 'father_name', label: "Father's Name" },
+      { key: 'date_of_birth', label: 'Date of Birth' },
     ],
   },
 ]
@@ -112,14 +132,13 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
       const base64 = await readFileAsBase64(file)
       const result = await verifyDocument(base64, file.type, docType.type)
       setExtracted(result)
-      // Seed editable fields
+      // Seed editable fields from AI result (may be empty if PDF or AI failed)
       const init = {}
       docType.fields.forEach(f => { init[f.key] = result[f.key] ?? '' })
       setEditedData(init)
       setPhase('review')
     } catch (err) {
       console.warn('[DocCard] AI failed:', err.message)
-      // No AI data — still let them upload manually with a flag
       setExtracted(null)
       setEditedData({})
       setPhase('review')
@@ -133,6 +152,24 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
     maxSize: 10 * 1024 * 1024,
     disabled: phase === 'analyzing' || phase === 'saving',
   })
+
+  // ── Retry OCR ────────────────────────────────────────────
+  const handleRetryOCR = async () => {
+    if (!pendingFile) return
+    setPhase('analyzing')
+    try {
+      const base64 = await readFileAsBase64(pendingFile)
+      const result = await verifyDocument(base64, pendingFile.type, docType.type)
+      setExtracted(result)
+      const init = {}
+      docType.fields.forEach(f => { init[f.key] = result[f.key] ?? '' })
+      setEditedData(init)
+      setPhase('review')
+    } catch (err) {
+      setExtracted({ note: err.message, is_authentic: null, confidence: 0, flags: [] })
+      setPhase('review')
+    }
+  }
 
   // ── Confirm & save ────────────────────────────────────────
   const handleConfirm = async () => {
@@ -306,8 +343,24 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
             )}
 
             {/* Extracted fields — editable */}
-            {extracted && (
+            {/* Always show review fields in review phase — extracted may be null for PDFs */}
+            {(phase === 'review' || phase === 'saving') && (
               <div>
+                {/* AI failure / PDF note with retry */}
+                {extracted?.note && (
+                  <div className="flex items-start gap-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/20 mb-3">
+                    <span className="text-amber-400 text-sm flex-shrink-0 mt-0.5">⚠️</span>
+                    <div className="flex-1">
+                      <p className="text-xs text-amber-300/80 leading-relaxed">{extracted.note}</p>
+                      {pendingFile && !pendingFile.type.includes('pdf') && (
+                        <button onClick={handleRetryOCR}
+                          className="mt-2 text-xs font-semibold text-indigo-400 hover:text-indigo-300 underline transition-colors">
+                          Retry AI extraction ↺
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-3">
                   Review extracted data <span className="font-normal normal-case text-slate-600">· correct any errors before saving</span>
                 </p>
@@ -431,12 +484,34 @@ export default function Documents() {
   const { user }        = useAuth()
   const candidateId     = user?.candidate_id
   const { data: docs = [], isLoading } = useDocuments(candidateId)
-  const uploadMutation  = useUploadDocument()
+  const uploadMutation   = useUploadDocument()
+  const completeByTitle  = useCompleteChecklistByTitle()
 
+  // docsMap must be declared first — used by allRequired checks below
   const docsMap  = docs.reduce((acc, d) => ({ ...acc, [d.type]: d }), {})
   const verified = docs.filter(d => d.status === 'verified').length
   const total    = DOC_TYPES.length
   const pct      = Math.round((verified / total) * 100)
+
+  // Auto-complete checklist items when upload thresholds are crossed
+  const requiredTypes       = DOC_TYPES.filter(d => d.required).map(d => d.type)
+  const allRequiredUploaded = requiredTypes.every(t => !!docsMap[t])
+  const allRequiredVerified = requiredTypes.every(t => docsMap[t]?.status === 'verified')
+
+  // Auto-tick checklist once thresholds are crossed (idempotent)
+  const prevUploaded = useRef(false)
+  const prevVerified  = useRef(false)
+  useEffect(() => {
+    if (!candidateId) return
+    if (allRequiredUploaded && !prevUploaded.current) {
+      prevUploaded.current = true
+      completeByTitle.mutate({ candidateId, title: 'Documents Submitted', description: 'All required documents uploaded', category: 'documents', sort_order: 2 })
+    }
+    if (allRequiredVerified && !prevVerified.current) {
+      prevVerified.current = true
+      completeByTitle.mutate({ candidateId, title: 'Documents Verified', description: 'AI verification of all documents', category: 'documents', sort_order: 3 })
+    }
+  }, [allRequiredUploaded, allRequiredVerified, candidateId])
 
   if (!candidateId) {
     return (

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { useAlerts, useCandidates } from '../../hooks/useData'
+import { useAlerts, useCandidates, useRealtimeSync } from '../../hooks/useData'
 import Avatar from '../../components/shared/Avatar'
 
 const NAV = [
@@ -136,6 +136,9 @@ export default function HRLayout() {
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [signOutOpen, setSignOutOpen]     = useState(false)
   const [signingOut, setSigningOut]       = useState(false)
+  // Live sync — auto-refreshes candidates, checklist, docs, alerts
+  useRealtimeSync()
+
   const { data: alerts = [] }             = useAlerts()
   const { data: candidates = [] } = useCandidates()
   const alertCount = alerts.length

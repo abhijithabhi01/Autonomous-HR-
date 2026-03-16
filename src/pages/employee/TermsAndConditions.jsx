@@ -2,11 +2,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { supabase } from '../../lib/supabase'
+import { useCompleteChecklistByTitle } from '../../hooks/useData'
 import toast from 'react-hot-toast'
 
 export default function TermsAndConditions() {
   const navigate = useNavigate()
   const { user } = useAuth()
+  const completeByTitle = useCompleteChecklistByTitle()
   const [accepted, setAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [loadingTerms, setLoadingTerms] = useState(true)
@@ -82,6 +84,11 @@ export default function TermsAndConditions() {
       if (error) throw error
 
       toast.success('Terms accepted! Contract signed digitally.')
+
+      // Auto-complete 'Contract Signed' checklist item
+      const cId = user?.candidate_id || user?.employee_id
+      if (cId) completeByTitle.mutate({ candidateId: cId, title: 'Contract Signed', description: 'Employment contract digitally signed', category: 'legal', sort_order: 1 })
+
       navigate('/onboarding/documents')
     } catch (err) {
       console.error('Terms acceptance error:', err)

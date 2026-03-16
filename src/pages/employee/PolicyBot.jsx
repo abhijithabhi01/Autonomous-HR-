@@ -180,7 +180,7 @@ export default function PolicyBot() {
         <h1 className="text-2xl font-display font-bold text-white">HR Policy Bot</h1>
         <div className="flex items-center gap-2 mt-1">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <p className="text-slate-500 text-sm">Powered by Gemini AI · Falls back to local search</p>
+          <p className="text-slate-500 text-sm">Powered by OpenRouter AI · Falls back to local search</p>
         </div>
       </div>
 

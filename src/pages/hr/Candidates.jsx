@@ -67,7 +67,7 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
 
         <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
           <div>
-            <h2 className="font-display font-bold text-white text-lg">Add New Candidate</h2>
+            <h2 className="font-display font-bold text-white text-lg">Add Candidate</h2>
             <p className="text-slate-500 text-xs mt-0.5">Work email is auto-generated from their name</p>
           </div>
           <button onClick={onClose}
@@ -124,7 +124,7 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>
             {isLoading
               ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving…</>
-              : '+ Add Candidate'}
+              : 'Add Candidate'}
           </button>
         </div>
       </div>
@@ -267,7 +267,7 @@ export default function Candidates() {
           <button onClick={() => setShowAdd(true)}
             className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition-all"
             style={{ boxShadow: '0 0 20px rgba(99,102,241,0.3)' }}>
-            + Add First Candidate
+            Add Candidate
           </button>
         </div>
       )}

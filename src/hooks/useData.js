@@ -1,4 +1,5 @@
 // src/hooks/useData.js
+import { useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
@@ -14,7 +15,7 @@ export function useCandidates() {
       const { data, error } = await supabase
         .from('candidates')
         .select('*')
-        .is('graduated_at', null)          // only active candidates
+        .is('graduated_at', null)
         .order('created_at', { ascending: false })
       if (error) throw error
       return data
@@ -44,10 +45,24 @@ export function useAddCandidate() {
     mutationFn: async (fields) => {
       const avatar        = fields.full_name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
       const nameParts     = fields.full_name.toLowerCase().trim().split(/\s+/)
-      const workEmail     = `${nameParts.join('.')}@dcompany.com`
+      const baseEmail     = `${nameParts.join('.')}@dcompany.com`
+
+      // Ensure the work email is unique — if base is taken, append a number (e.g. abhijith.s2@dcompany.com)
+      let workEmail = baseEmail
+      let suffix    = 2
+      while (true) {
+        const { data: existing } = await supabase
+          .from('candidates')
+          .select('id')
+          .eq('work_email', workEmail)
+          .maybeSingle()
+        if (!existing) break           // email is free
+        workEmail = `${nameParts.join('.')}${suffix}@dcompany.com`
+        suffix++
+        if (suffix > 99) break         // safety — should never reach here
+      }
       const personalEmail = fields.personal_email?.trim() || null
 
-      // 1. Insert candidate row first
       const { data: candidate, error: candError } = await supabase
         .from('candidates')
         .insert({
@@ -67,8 +82,8 @@ export function useAddCandidate() {
         .single()
       if (candError) throw candError
 
-      // 2. Seed checklist items
       const checklistItems = [
+        { title: 'Profile Completed',     description: 'Personal profile and photo uploaded',      category: 'hr',        sort_order: 0  },
         { title: 'Contract Signed',       description: 'Employment contract digitally signed',    category: 'legal',     sort_order: 1  },
         { title: 'Documents Submitted',   description: 'All required documents uploaded',          category: 'documents', sort_order: 2  },
         { title: 'Documents Verified',    description: 'AI verification of all documents',         category: 'documents', sort_order: 3  },
@@ -84,7 +99,6 @@ export function useAddCandidate() {
         checklistItems.map(item => ({ ...item, candidate_id: candidate.id }))
       )
 
-      // 3. IT provisioning request
       await supabase.from('provisioning_requests').insert({
         candidate_id:        candidate.id,
         candidate_name:      candidate.full_name,
@@ -98,7 +112,6 @@ export function useAddCandidate() {
         systems_provisioned: {},
       })
 
-      // 4. Call edge function — creates auth user + sends email (uses service role key server-side)
       let tempPassword = null
       try {
         const { data: fnData, error: fnError } = await supabase.functions.invoke('send-onboarding-email', {
@@ -159,7 +172,7 @@ export function useDeleteCandidate() {
 }
 
 // ════════════════════════════════════════════════════════════
-// EMPLOYEES  (graduated candidates)
+// EMPLOYEES
 // ════════════════════════════════════════════════════════════
 
 export function useEmployees() {
@@ -193,7 +206,7 @@ export function useEmployee(id) {
 }
 
 // ════════════════════════════════════════════════════════════
-// DOCUMENTS  (linked to candidate)
+// DOCUMENTS
 // ════════════════════════════════════════════════════════════
 
 export function useDocuments(candidateId) {
@@ -230,7 +243,6 @@ export function useUploadDocument() {
           candidate_id:   candidateId,
           type:           docType,
           label:          labelForType(docType),
-          icon:           iconForType(docType),
           status:         extractedData ? 'verified' : 'uploaded',
           uploaded_at:    new Date().toISOString(),
           storage_path:   path,
@@ -259,7 +271,7 @@ export async function getDocumentUrl(storagePath) {
 }
 
 // ════════════════════════════════════════════════════════════
-// CHECKLIST  (linked to candidate)
+// CHECKLIST
 // ════════════════════════════════════════════════════════════
 
 export function useChecklist(candidateId) {
@@ -300,6 +312,99 @@ export function useToggleChecklist() {
       queryClient.invalidateQueries({ queryKey: ['candidates'] })
     },
     onError: (err) => toast.error(err.message),
+  })
+}
+
+// ── Auto-complete checklist item by title ─────────────────────
+// Used by TermsAndConditions, Documents, ProfileCompletion.
+// Idempotent — silently skips if item not found or already done.
+export function useCompleteChecklistByTitle() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ candidateId, title, description = '', category = 'hr', sort_order = 99 }) => {
+      if (!candidateId) return null
+
+      // 1. Check if item already exists (completed or not)
+      const { data: existing } = await supabase
+        .from('checklist_items')
+        .select('id, completed')
+        .eq('candidate_id', candidateId)
+        .ilike('title', title)
+        .maybeSingle()
+
+      // 2a. Already completed — nothing to do
+      if (existing?.completed) {
+        console.log('[checklist] Already completed:', title)
+        return null
+      }
+
+      const now = new Date().toISOString()
+
+      // 2b. Item exists but not completed — update it
+      if (existing?.id) {
+        const { data, error } = await supabase
+          .from('checklist_items')
+          .update({ completed: true, completed_at: now })
+          .eq('id', existing.id)
+          .select()
+          .single()
+        if (error) throw error
+        console.log('[checklist] ✅ Marked complete:', title)
+        return { ...data, candidateId }
+      }
+
+      // 2c. Item does not exist — insert it as already completed (for existing candidates)
+      const { data, error } = await supabase
+        .from('checklist_items')
+        .insert({
+          candidate_id: candidateId,
+          title,
+          description: description || title,
+          category,
+          sort_order,
+          completed:    true,
+          completed_at: now,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      console.log('[checklist] ✅ Inserted + completed:', title)
+      return { ...data, candidateId }
+    },
+    onSuccess: (data) => {
+      if (!data) return
+      queryClient.invalidateQueries({ queryKey: ['checklist', data.candidateId] })
+      queryClient.invalidateQueries({ queryKey: ['candidate', data.candidateId] })
+      queryClient.invalidateQueries({ queryKey: ['candidates'] })
+    },
+    onError: (err) => console.warn('[useCompleteChecklistByTitle]', err.message),
+  })
+}
+
+// ── Mark onboarding complete ──────────────────────────────────
+// Called by Checklist.jsx when all items reach 100%
+export function useMarkOnboardingComplete() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (candidateId) => {
+      const { data, error } = await supabase
+        .from('candidates')
+        .update({
+          onboarding_status:   'completed',
+          onboarding_progress: 100,
+          completed_at:        new Date().toISOString(),
+        })
+        .eq('id', candidateId)
+        .select()
+        .single()
+      if (error) throw error
+      return data
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['candidate', data.id] })
+      queryClient.invalidateQueries({ queryKey: ['candidates'] })
+    },
+    onError: (err) => console.warn('[useMarkOnboardingComplete]', err.message),
   })
 }
 
@@ -396,7 +501,7 @@ export function useCreatePolicySession() {
       if (error) throw error
       return data
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['policy_sessions'] })
     },
   })
@@ -428,6 +533,53 @@ export function useAddPolicyMessage() {
 }
 
 // ════════════════════════════════════════════════════════════
+// REAL-TIME SYNC
+// Call useRealtimeSync() once in HRLayout — keeps all HR
+// queries fresh without any manual refresh.
+// ════════════════════════════════════════════════════════════
+export function useRealtimeSync() {
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('hr-live-sync')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'candidates' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['candidates'] })
+          queryClient.invalidateQueries({ queryKey: ['candidate'] })
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'checklist_items' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['checklist'] })
+          queryClient.invalidateQueries({ queryKey: ['candidates'] })
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'documents' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['documents'] })
+        }
+      )
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'alerts' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['alerts'] })
+        }
+      )
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[realtime] ✅ HR live sync connected')
+        }
+      })
+
+    return () => { supabase.removeChannel(channel) }
+  }, [queryClient])
+}
+
+// ════════════════════════════════════════════════════════════
 // HELPERS
 // ════════════════════════════════════════════════════════════
 
@@ -438,15 +590,7 @@ function labelForType(type) {
     degree:            'Degree Certificate',
     employment_letter: 'Employment Letter',
     bank_details:      'Bank Details',
+    aadhaar:           'Aadhaar Card',
+    pan_card:          'PAN Card',
   }[type] ?? type
-}
-
-function iconForType(type) {
-  return {
-    passport:          '🛂',
-    visa:              '📋',
-    degree:            '🎓',
-    employment_letter: '📄',
-    bank_details:      '🏦',
-  }[type] ?? '📁'
 }
