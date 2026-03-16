@@ -100,7 +100,7 @@ export default function EmployeeLayout() {
               </svg>
             </div>
             <div>
-              <p className="font-display font-bold text-white text-base leading-none">PeopleOS</p>
+              <p className="font-display font-bold text-white text-base leading-none">D Company</p>
               <p className="text-xs text-slate-600 mt-0.5">Onboarding Portal</p>
             </div>
           </div>
@@ -171,7 +171,7 @@ export default function EmployeeLayout() {
               <line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
           </button>
-          <span className="font-display font-bold text-white text-sm">PeopleOS</span>
+          <span className="font-display font-bold text-white text-sm">D Company</span>
           <div className="ml-auto flex items-center gap-2">
             <div className="w-20"><ProgressBar value={progress} showLabel={false} size="sm" /></div>
             <span className="text-xs text-slate-500">{progress}%</span>

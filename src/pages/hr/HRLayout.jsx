@@ -186,7 +186,7 @@ export default function HRLayout() {
               <line x1="3" y1="18" x2="21" y2="18"/>
             </svg>
           </button>
-          <span className="font-display font-bold text-white text-sm">PeopleOS</span>
+          <span className="font-display font-bold text-white text-sm">D Company</span>
           {alertCount > 0 && (
             <span className="ml-auto bg-red-500 text-white text-[10px] min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center font-bold">
               {alertCount}
