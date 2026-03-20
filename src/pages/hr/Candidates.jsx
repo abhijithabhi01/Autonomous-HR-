@@ -10,17 +10,25 @@ import toast from 'react-hot-toast'
 const FILTERS     = ['All', 'Pre-Joining', 'Onboarding']
 const DEPARTMENTS = ['Engineering', 'Product', 'Design', 'Marketing', 'Finance', 'HR', 'Operations', 'Sales', 'Legal']
 
+// tomorrow's date as YYYY-MM-DD — used for both default and min
+function tomorrowStr() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 const EMPTY_FORM = {
   full_name:      '',
-  personal_email: '',   // where the welcome email goes — work email is auto-generated
+  personal_email: '',
   position:       '',
   department:     'Engineering',
   manager:        '',
   location:       '',
-  start_date:     new Date().toISOString().slice(0, 10),
+  start_date:     tomorrowStr(),   // default = tomorrow, never today
 }
 
-function Field({ label, name, type = 'text', required, value, onChange, error, hint }) {
+// Field supports extra HTML input props (e.g. min, max) via ...rest
+function Field({ label, name, type = 'text', required, value, onChange, error, hint, ...rest }) {
   return (
     <div>
       <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
@@ -30,6 +38,7 @@ function Field({ label, name, type = 'text', required, value, onChange, error, h
         type={type}
         value={value}
         onChange={e => onChange(name, e.target.value)}
+        {...rest}
         className={`w-full bg-[#080C18] border rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600
           focus:outline-none focus:border-indigo-500/50 transition-all
           ${error ? 'border-red-500/50' : 'border-white/[0.08]'}`}
@@ -49,11 +58,27 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
 
   const validate = () => {
     const e = {}
-    if (!form.full_name.trim()) e.full_name = 'Required'
-    if (!form.position.trim())  e.position  = 'Required'
-    if (!form.start_date)       e.start_date = 'Required'
-    if (form.personal_email && !/\S+@\S+\.\S+/.test(form.personal_email))
-      e.personal_email = 'Invalid email'
+
+    if (!form.full_name.trim())           e.full_name = 'Full name is required'
+    else if (form.full_name.trim().length < 3) e.full_name = 'Must be at least 3 characters'
+
+    if (form.personal_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email))
+      e.personal_email = 'Enter a valid email'
+
+    if (!form.position.trim())            e.position = 'Position is required'
+
+    if (!form.start_date) {
+      e.start_date = 'Start date is required'
+    } else {
+      // Block today AND past — only future dates allowed
+      const selected = new Date(form.start_date)
+      const today    = new Date()
+      today.setHours(0, 0, 0, 0)
+      if (selected <= today) {
+        e.start_date = 'Start date must be a future date (tomorrow or later)'
+      }
+    }
+
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -103,7 +128,9 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
               </select>
             </div>
 
-            <Field label="Last Date" name="start_date" type="date" required
+            {/* min={tomorrowStr()} prevents browser calendar from showing past/today */}
+            <Field label="Start Date" name="start_date" type="date" required
+              min={tomorrowStr()}
               value={form.start_date} onChange={set} error={errors.start_date} />
 
             <Field label="Manager" name="manager"
@@ -186,11 +213,17 @@ export default function Candidates() {
   })
 
   const handleAdd = async (fields) => {
+    // ── FIX: close modal BEFORE the async operation ──────────
+    // If we close after, the realtime onSnapshot fires when the new
+    // candidate doc is written, invalidateQueries triggers a re-render,
+    // and the modal flashes back open because showAddModal is still true.
+    setShowAdd(false)
     try {
       await addMutation.mutateAsync(fields)
-      setShowAdd(false)
     } catch {
-      // toast already shown by useAddCandidate
+      // Re-open on error so HR can fix and retry
+      // (toast already shown by useAddCandidate onError)
+      setShowAdd(true)
     }
   }
 
@@ -225,7 +258,12 @@ export default function Candidates() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          
+          {candidates.length > 0 && (
+            <div className="px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
+              <span className="text-xs font-bold text-indigo-400">{candidates.length} in pipeline</span>
+            </div>
+          )}
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all"
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>
@@ -277,12 +315,10 @@ export default function Candidates() {
               style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'forwards',
                 backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, transparent 60%)' }}>
 
-              {/* Status stripe */}
               <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl ${
                 c.onboarding_status === 'onboarding' ? 'bg-indigo-500' : 'bg-amber-500'
               }`} />
 
-              {/* Delete button */}
               <button
                 onClick={e => { e.stopPropagation(); setDeleteTarget(c) }}
                 className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all opacity-0 group-hover:opacity-100 z-10"
@@ -294,9 +330,7 @@ export default function Candidates() {
                 <div className="flex items-center gap-3">
                   <Avatar initials={c.avatar} size="md" index={i} />
                   <div>
-                    <p className="font-semibold text-slate-200 text-sm group-hover:text-white transition-colors">
-                      {c.full_name}
-                    </p>
+                    <p className="font-semibold text-slate-200 text-sm group-hover:text-white transition-colors">{c.full_name}</p>
                     <p className="text-xs text-slate-500 mt-0.5">{c.position}</p>
                   </div>
                 </div>

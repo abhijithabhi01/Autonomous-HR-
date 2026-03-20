@@ -185,7 +185,7 @@ export function useAddCandidate() {
         authCreated = true
         console.log('[useAddCandidate] Auth + profile created for', loginEmail)
       } catch (err) {
-        if (err.code === 'auth/email-already-in-use') {
+        if (err.code === 'auth/email-already-in-use' || err.code === 'auth/email-exists' || err.message === 'EMAIL_EXISTS') {
           // Auth account exists from a previous failed attempt.
           // The new signUp() uses REST API which prevents this going forward,
           // but existing orphaned accounts need a one-time manual fix:
