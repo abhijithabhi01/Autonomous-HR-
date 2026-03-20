@@ -223,12 +223,18 @@ export function useAddCandidate() {
       }
 
       // Store temp credentials on candidate doc (HR reference, not shown to employee)
-      await updateDoc(doc(db, 'candidates', candidateRef.id), {
-        login_email:    loginEmail,
-        temp_password:  tempPassword,
-        auth_created:   authCreated,
-        work_email:     finalEmail,
-      })
+      // Wrapped in try/catch so a rules error here never causes mutationFn to throw
+      // (which would trigger the catch in handleAdd and reopen the modal).
+      try {
+        await updateDoc(doc(db, 'candidates', candidateRef.id), {
+          login_email:    loginEmail,
+          temp_password:  tempPassword,
+          auth_created:   authCreated,
+          work_email:     finalEmail,
+        })
+      } catch (credErr) {
+        console.warn('[useAddCandidate] Could not store temp credentials:', credErr.message)
+      }
 
       // 5. Welcome email via Vercel → Resend
       let emailSent = false

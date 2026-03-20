@@ -212,19 +212,16 @@ export default function Candidates() {
     )
   })
 
-  const handleAdd = async (fields) => {
-    // ── FIX: close modal BEFORE the async operation ──────────
-    // If we close after, the realtime onSnapshot fires when the new
-    // candidate doc is written, invalidateQueries triggers a re-render,
-    // and the modal flashes back open because showAddModal is still true.
-    setShowAdd(false)
-    try {
-      await addMutation.mutateAsync(fields)
-    } catch {
-      // Re-open on error so HR can fix and retry
-      // (toast already shown by useAddCandidate onError)
-      setShowAdd(true)
-    }
+  const handleAdd = (fields) => {
+    // Use mutate() (not mutateAsync) and pass onSuccess/onError as callbacks.
+    // This avoids try/catch in the component and removes the chance of
+    // accidentally re-opening the modal.  The modal stays open while the
+    // mutation is pending (spinner is shown), then closes on success.
+    addMutation.mutate(fields, {
+      onSuccess: () => setShowAdd(false),
+      // On error the toast is already shown by useAddCandidate onError.
+      // We intentionally keep the modal open so HR can fix and retry.
+    })
   }
 
   const handleDelete = async () => {
