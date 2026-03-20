@@ -1,38 +1,39 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../../hooks/useAuth'
-import { useCompleteChecklistByTitle } from '../../hooks/useData'
-import { supabase } from '../../lib/supabase'
+import { useNavigate }         from 'react-router-dom'
+import { useAuth }             from '../../hooks/useAuth'
+import { useCompleteChecklistByTitle } from '../../hooks/useData'   // ← was commented out
 import toast from 'react-hot-toast'
 
+// Firebase imports that were missing
+import { db, storage }                             from '../../lib/firebase'
+import { doc, getDoc, getDocs, collection,
+         query, where, updateDoc }                 from 'firebase/firestore'
+import { ref, uploadBytes, getDownloadURL }        from 'firebase/storage'
+
 export default function ProfileCompletion() {
-  const navigate = useNavigate()
-  const { user } = useAuth()
+  const navigate        = useNavigate()
+  const { user }        = useAuth()
   const completeByTitle = useCompleteChecklistByTitle()
-  const [loading, setLoading] = useState(false)
+  const [loading,        setLoading]        = useState(false)
   const [loadingProfile, setLoadingProfile] = useState(true)
-  const [uploading, setUploading] = useState(false)
+  const [uploading,      setUploading]      = useState(false)
   
   const [form, setForm] = useState({
-    full_name: '',
-    phone: '',
-    address: '',
-    emergency_contact_name: '',
+    full_name:               '',
+    phone:                   '',
+    address:                 '',
+    emergency_contact_name:  '',
     emergency_contact_phone: '',
-    date_of_birth: '',
-    profile_photo_url: null,
+    date_of_birth:           '',
+    profile_photo_url:       null,
   })
 
   const [photoPreview, setPhotoPreview] = useState(null)
 
-  // Debug: Check user context on mount (only after loading completes)
   useEffect(() => {
     console.log('User context:', user)
-    // Only show error if user is loaded but missing candidate_id
-    // Don't show error while user is null (still loading)
     if (user && !user?.candidate_id && !user?.employee_id) {
       console.error('No candidate_id or employee_id found in user object!')
-      // Don't show toast here - we'll handle it in the submit function
     }
   }, [user])
 
@@ -43,102 +44,48 @@ export default function ProfileCompletion() {
         setLoadingProfile(false)
         return
       }
-
       const candidateId = user.candidate_id || user.employee_id
-      
       try {
-        const { data, error } = await supabase
-          .from('candidates')
-          .select('full_name, phone, address, emergency_contact_name, emergency_contact_phone, date_of_birth, profile_photo_url, profile_completed')
-          .eq('id', candidateId)
-          .single()
-
-        if (error) {
-          console.error('Error loading profile:', error)
-          setLoadingProfile(false)
-          return
-        }
-
-        if (data) {
-          console.log('Loaded existing profile:', data)
-          
-          // Populate form with existing data
-          setForm({
-            full_name: data.full_name || '',
-            phone: data.phone || '',
-            address: data.address || '',
-            emergency_contact_name: data.emergency_contact_name || '',
-            emergency_contact_phone: data.emergency_contact_phone || '',
-            date_of_birth: data.date_of_birth || '',
-            profile_photo_url: data.profile_photo_url || null,
-          })
-
-          // Set photo preview if exists
-          if (data.profile_photo_url) {
-            setPhotoPreview(data.profile_photo_url)
-          }
-        }
+        const snap = await getDoc(doc(db, 'candidates', candidateId))
+        if (!snap.exists()) { setLoadingProfile(false); return }
+        const data = snap.data()
+        setForm({
+          full_name:               data.full_name               || '',
+          phone:                   data.phone                   || '',
+          address:                 data.address                 || '',
+          emergency_contact_name:  data.emergency_contact_name  || '',
+          emergency_contact_phone: data.emergency_contact_phone || '',
+          date_of_birth:           data.date_of_birth           || '',
+          profile_photo_url:       data.profile_photo_url       || null,
+        })
+        if (data.profile_photo_url) setPhotoPreview(data.profile_photo_url)
       } catch (err) {
         console.error('Failed to load profile:', err)
       } finally {
         setLoadingProfile(false)
       }
     }
-
     loadProfile()
   }, [user])
 
   const handlePhotoUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Please upload an image file')
-      return
-    }
-
-    // Validate file size (max 2MB instead of 5MB for better performance)
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error('Image must be less than 2MB')
-      return
-    }
+    if (!file.type.startsWith('image/')) { toast.error('Please upload an image file'); return }
+    if (file.size > 2 * 1024 * 1024)    { toast.error('Image must be less than 2MB'); return }
 
     setUploading(true)
     try {
-      // Create preview
       const reader = new FileReader()
-      reader.onload = (e) => setPhotoPreview(e.target.result)
+      reader.onload = (ev) => setPhotoPreview(ev.target.result)
       reader.readAsDataURL(file)
 
-      // Upload to Supabase storage with unique filename
       const fileExt = file.name.split('.').pop()
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`
-      
-      console.log('Uploading file:', fileName)
-      
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('profile-photos')
-        .upload(fileName, file, { 
-          cacheControl: '3600',
-          upsert: false 
-        })
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError)
-        throw uploadError
-      }
-
-      console.log('Upload successful:', uploadData)
-
-      // Get public URL
-      const { data: urlData } = supabase.storage
-        .from('profile-photos')
-        .getPublicUrl(fileName)
-
-      console.log('Public URL:', urlData.publicUrl)
-
-      setForm(f => ({ ...f, profile_photo_url: urlData.publicUrl }))
+      const fileName = Date.now() + '-' + Math.random().toString(36).substring(7) + '.' + fileExt
+      const fileRef  = ref(storage, 'profile-photos/' + fileName)
+      await uploadBytes(fileRef, file)
+      const publicUrl = await getDownloadURL(fileRef)
+      setForm(f => ({ ...f, profile_photo_url: publicUrl }))
       toast.success('Photo uploaded!')
     } catch (err) {
       console.error('Photo upload error:', err)
@@ -150,55 +97,29 @@ export default function ProfileCompletion() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
-    // Validation
-    if (!form.full_name?.trim()) {
-      toast.error('Please enter your full name')
-      return
-    }
-    if (!form.phone?.trim()) {
-      toast.error('Please enter your phone number')
-      return
-    }
-    if (!form.address?.trim()) {
-      toast.error('Please enter your address')
-      return
-    }
-    if (!form.date_of_birth) {
-      toast.error('Please enter your date of birth')
-      return
-    }
+    if (!form.full_name?.trim())  { toast.error('Please enter your full name');    return }
+    if (!form.phone?.trim())      { toast.error('Please enter your phone number'); return }
+    if (!form.address?.trim())    { toast.error('Please enter your address');      return }
+    if (!form.date_of_birth)      { toast.error('Please enter your date of birth');return }
 
-    // Check user context - handle string "null" as well
     let candidateId = user?.candidate_id || user?.employee_id
-    
-    // Handle string "null" or actual null
+
+    // Fallback: look up by email if id is missing/corrupted
     if (!candidateId || candidateId === 'null' || candidateId === 'undefined') {
-      // Try to find candidate by email instead
       console.log('No valid candidate_id, trying to find by email:', user?.email)
-      
       try {
-        const { data: candidates, error } = await supabase
-          .from('candidates')
-          .select('id')
-          .eq('work_email', user?.email)
-          .single()
-        
-        if (error || !candidates) {
-          toast.error('Could not find your candidate record. Please contact HR.')
-          console.error('Candidate lookup error:', error)
-          return
+        // Try personal_email first, then work_email
+        let qSnap = await getDocs(query(
+          collection(db, 'candidates'), where('personal_email', '==', user?.email)
+        ))
+        if (qSnap.empty) {
+          qSnap = await getDocs(query(
+            collection(db, 'candidates'), where('work_email', '==', user?.email)
+          ))
         }
-        
-        candidateId = candidates.id
-        console.log('Found candidate by email:', candidateId)
-        
-        // Update the profile with the correct candidate_id for future use
-        await supabase
-          .from('profiles')
-          .update({ candidate_id: candidateId })
-          .eq('id', user.id)
-          
+        if (qSnap.empty) { toast.error('Could not find your candidate record. Please contact HR.'); return }
+        candidateId = qSnap.docs[0].id
+        await updateDoc(doc(db, 'profiles', user.id), { candidate_id: candidateId })
       } catch (err) {
         toast.error('User session error. Please contact HR.')
         console.error('Failed to find candidate:', err)
@@ -206,62 +127,31 @@ export default function ProfileCompletion() {
       }
     }
 
-    console.log('Submitting profile for candidate:', candidateId)
-    console.log('Form data:', form)
-
     setLoading(true)
     try {
-      // Update candidate record
       const updateData = {
-        full_name: form.full_name.trim(),
-        phone: form.phone.trim(),
-        address: form.address.trim(),
-        emergency_contact_name: form.emergency_contact_name?.trim() || null,
+        full_name:               form.full_name.trim(),
+        phone:                   form.phone.trim(),
+        address:                 form.address.trim(),
+        emergency_contact_name:  form.emergency_contact_name?.trim()  || null,
         emergency_contact_phone: form.emergency_contact_phone?.trim() || null,
-        date_of_birth: form.date_of_birth,
-        profile_photo_url: form.profile_photo_url || null,
-        profile_completed: true,
+        date_of_birth:           form.date_of_birth,
+        profile_photo_url:       form.profile_photo_url || null,
+        profile_completed:       true,
       }
-
-      console.log('Update data:', updateData)
-
-      const { data, error } = await supabase
-        .from('candidates')
-        .update(updateData)
-        .eq('id', candidateId)
-        .select()
-
-      if (error) {
-        console.error('Database error:', error)
-        throw error
-      }
-
-      console.log('Update successful:', data)
-
-      toast.success('Profile completed! ✅')
-
-      // Auto-tick 'Profile Completed' checklist item
-      completeByTitle.mutate({ candidateId, title: 'Profile Completed', description: 'Personal profile and photo uploaded', category: 'hr', sort_order: 0 })
-
-      // Move candidate status to 'onboarding' if still pre_joining
-      await supabase
-        .from('candidates')
-        .update({ onboarding_status: 'onboarding', onboarding_progress: 10 })
-        .eq('id', candidateId)
-        .eq('onboarding_status', 'pre_joining')
-
+      await updateDoc(doc(db, 'candidates', candidateId), updateData)
+      toast.success('Profile completed!')
+      completeByTitle.mutate({
+        candidateId,
+        title:       'Profile Completed',
+        description: 'Personal profile and photo uploaded',
+        category:    'hr',
+        sort_order:  0,
+      })
       navigate('/onboarding/terms')
     } catch (err) {
       console.error('Profile update error:', err)
-      
-      // More detailed error message
-      if (err.message.includes('column')) {
-        toast.error('Database error: Missing columns. Please run the migration SQL.')
-      } else if (err.code === '42703') {
-        toast.error('Database column missing. Contact your administrator.')
-      } else {
-        toast.error(`Failed to save: ${err.message}`)
-      }
+      toast.error(`Failed to save: ${err.message}`)
     } finally {
       setLoading(false)
     }
@@ -287,16 +177,12 @@ export default function ProfileCompletion() {
         <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-6 animate-slide-up opacity-0"
           style={{ animationDelay: '100ms', animationFillMode: 'forwards' }}>
           <h2 className="font-display font-semibold text-white text-sm mb-4">Profile Photo</h2>
-          
           <div className="flex items-center gap-6">
-            {/* Photo Preview */}
             <div className="relative">
               <div className="w-24 h-24 rounded-full overflow-hidden bg-indigo-500/10 border-2 border-indigo-500/20 flex items-center justify-center">
-                {photoPreview ? (
-                  <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-3xl text-indigo-400">📷</span>
-                )}
+                {photoPreview
+                  ? <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" />
+                  : <span className="text-3xl text-indigo-400">📷</span>}
               </div>
               {uploading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full">
@@ -304,12 +190,9 @@ export default function ProfileCompletion() {
                 </div>
               )}
             </div>
-
-            {/* Upload Button */}
             <div>
               <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all">
-                <span>📤</span>
-                <span>Upload Photo</span>
+                <span>📤</span><span>Upload Photo</span>
                 <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
               </label>
               <p className="text-xs text-slate-500 mt-2">JPG, PNG or GIF. Max 2MB.</p>
@@ -321,54 +204,36 @@ export default function ProfileCompletion() {
         <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-6 animate-slide-up opacity-0"
           style={{ animationDelay: '200ms', animationFillMode: 'forwards' }}>
           <h2 className="font-display font-semibold text-white text-sm mb-4">Personal Information</h2>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Full Name *</label>
-              <input
-                type="text"
-                value={form.full_name}
+              <input type="text" value={form.full_name}
                 onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
                 className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
-                placeholder="Enter your full name"
-                required
-              />
+                placeholder="Enter your full name" required />
             </div>
-
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Date of Birth *</label>
-              <input
-                type="date"
-                value={form.date_of_birth}
+              <input type="date" value={form.date_of_birth}
                 onChange={e => setForm(f => ({ ...f, date_of_birth: e.target.value }))}
                 max={new Date().toISOString().split('T')[0]}
                 className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/50 transition-all"
-                required
-              />
+                required />
             </div>
-
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Phone Number *</label>
-              <input
-                type="tel"
-                value={form.phone}
+              <input type="tel" value={form.phone}
                 onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                 className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
-                placeholder="+91 98765 43210"
-                required
-              />
+                placeholder="+91 98765 43210" required />
             </div>
-
             <div className="md:col-span-2">
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Address *</label>
-              <textarea
-                value={form.address}
+              <textarea value={form.address}
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
                 rows={3}
                 className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all resize-none"
-                placeholder="House name, street, city, state, PIN"
-                required
-              />
+                placeholder="House name, street, city, state, PIN" required />
             </div>
           </div>
         </div>
@@ -377,45 +242,32 @@ export default function ProfileCompletion() {
         <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-6 animate-slide-up opacity-0"
           style={{ animationDelay: '300ms', animationFillMode: 'forwards' }}>
           <h2 className="font-display font-semibold text-white text-sm mb-4">Emergency Contact (Optional)</h2>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Contact Name</label>
-              <input
-                type="text"
-                value={form.emergency_contact_name}
+              <input type="text" value={form.emergency_contact_name}
                 onChange={e => setForm(f => ({ ...f, emergency_contact_name: e.target.value }))}
                 className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
-                placeholder="Full name"
-              />
+                placeholder="Full name" />
             </div>
-
             <div>
               <label className="block text-xs font-semibold text-slate-400 mb-1.5">Contact Phone</label>
-              <input
-                type="tel"
-                value={form.emergency_contact_phone}
+              <input type="tel" value={form.emergency_contact_phone}
                 onChange={e => setForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
                 className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
-                placeholder="+91 98765 43210"
-              />
+                placeholder="+91 98765 43210" />
             </div>
           </div>
         </div>
 
-        {/* Submit Button */}
+        {/* Submit */}
         <div className="flex justify-end gap-3 animate-slide-up opacity-0"
           style={{ animationDelay: '400ms', animationFillMode: 'forwards' }}>
-          <button
-            type="button"
-            onClick={() => navigate('/onboarding')}
-            disabled={loading}
+          <button type="button" onClick={() => navigate('/onboarding')} disabled={loading}
             className="px-6 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-slate-200 border border-white/[0.08] hover:bg-white/[0.04] transition-all disabled:opacity-50">
             Back
           </button>
-          <button
-            type="submit"
-            disabled={loading}
+          <button type="submit" disabled={loading}
             className="px-6 py-3 rounded-xl text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 transition-all disabled:opacity-50 flex items-center gap-2"
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>
             {loading && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}

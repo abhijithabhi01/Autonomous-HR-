@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { useEmployee } from '../../hooks/useData'
+import { useCandidate } from '../../hooks/useData'
 import Avatar from '../../components/shared/Avatar'
 import ProgressBar from '../../components/shared/ProgressBar'
 
@@ -65,7 +65,7 @@ export default function EmployeeLayout() {
   const [signingOut, setSigningOut]   = useState(false)
 
   // Live data from DB — real job title + progress
-  const { data: emp } = useEmployee(user?.employee_id)
+  const { data: emp } = useCandidate(user?.candidate_id)
   const progress = emp?.onboarding_progress ?? 0
   const jobTitle = emp?.position             ?? ''
 

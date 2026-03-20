@@ -13,13 +13,13 @@ import Alerts         from './pages/hr/Alerts'
 import Candidates from './pages/hr/Candidates'
 
 // Employee / candidate onboarding routes
-import EmployeeLayout from './pages/employee/EmployeeLayout'
-import Welcome        from './pages/employee/Welcome'
-import ProfileCompletion from './pages/employee/ProfileCompletion'
-import TermsAndConditions from './pages/employee/TermsAndConditions'
-import Documents      from './pages/employee/Documents'
-import Checklist      from './pages/employee/Checklist'
-import PolicyBot      from './pages/employee/PolicyBot'
+import EmployeeLayout from './pages/candidate/EmployeeLayout'
+import Welcome        from './pages/candidate/Welcome'
+import ProfileCompletion from './pages/candidate/ProfileCompletion'
+import TermsAndConditions from './pages/candidate/TermsAndConditions'
+import Documents      from './pages/candidate/Documents'
+import Checklist      from './pages/candidate/Checklist'
+import PolicyBot      from './pages/candidate/PolicyBot'
 
 // IT Admin routes
 import ITLayout       from './pages/it/ITLayout'

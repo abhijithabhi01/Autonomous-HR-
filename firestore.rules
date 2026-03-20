@@ -1,0 +1,82 @@
+// firestore.rules
+// Replaces Supabase Row Level Security policies.
+// Deploy with: firebase deploy --only firestore:rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- helpers -------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isHR() {
+      return isSignedIn() &&
+        get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'hr';
+    }
+    function myProfile() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data;
+    }
+    function myCandidateId() {
+      return myProfile().candidate_id;
+    }
+
+    // ---- profiles ------------------------------------------
+    // Users can only read/write their own profile
+    match /profiles/{uid} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
+      allow read: if isHR();
+    }
+
+    // ---- candidates ----------------------------------------
+    // HR can read/write all. Candidates can only read their own.
+    match /candidates/{candidateId} {
+      allow read, write: if isHR();
+      allow read, update: if isSignedIn() && myCandidateId() == candidateId;
+    }
+
+    // ---- employees -----------------------------------------
+    match /employees/{employeeId} {
+      allow read, write: if isHR();
+      allow read: if isSignedIn() && myProfile().employee_id == employeeId;
+    }
+
+    // ---- documents -----------------------------------------
+    // Candidates can read/write their own. HR can read all.
+    match /documents/{docId} {
+      allow read, write: if isSignedIn() && myCandidateId() == resource.data.candidate_id;
+      allow create: if isSignedIn() && myCandidateId() == request.resource.data.candidate_id;
+      allow read, write: if isHR();
+    }
+
+    // ---- checklist_items -----------------------------------
+    match /checklist_items/{itemId} {
+      allow read, write: if isSignedIn() && myCandidateId() == resource.data.candidate_id;
+      allow read, write: if isHR();
+    }
+
+    // ---- alerts --------------------------------------------
+    // HR only
+    match /alerts/{alertId} {
+      allow read, write: if isHR();
+    }
+
+    // ---- provisioning_requests -----------------------------
+    match /provisioning_requests/{reqId} {
+      allow read, write: if isHR();
+    }
+
+    // ---- policy_sessions + policy_messages -----------------
+    match /policy_sessions/{sessionId} {
+      allow read, write: if isSignedIn() && (
+        resource.data.candidate_id == myCandidateId() ||
+        resource.data.employee_id  == myProfile().employee_id ||
+        isHR()
+      );
+      allow create: if isSignedIn();
+    }
+    match /policy_messages/{msgId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}

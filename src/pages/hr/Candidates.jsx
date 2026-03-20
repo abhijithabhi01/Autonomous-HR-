@@ -103,7 +103,7 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
               </select>
             </div>
 
-            <Field label="Start Date" name="start_date" type="date" required
+            <Field label="Last Date" name="start_date" type="date" required
               value={form.start_date} onChange={set} error={errors.start_date} />
 
             <Field label="Manager" name="manager"
@@ -225,12 +225,7 @@ export default function Candidates() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {candidates.length > 0 && (
-            <div className="px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-              <span className="text-xs font-bold text-indigo-400">{candidates.length} in pipeline</span>
-            </div>
-          )}
+          
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all"
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>

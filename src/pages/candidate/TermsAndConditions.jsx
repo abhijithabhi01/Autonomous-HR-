@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { supabase } from '../../lib/supabase'
-import { useCompleteChecklistByTitle } from '../../hooks/useData'
+  // import { useCompleteChecklistByTitle } from '../../hooks/useData'
 import toast from 'react-hot-toast'
 
 export default function TermsAndConditions() {
@@ -26,27 +25,12 @@ export default function TermsAndConditions() {
       const candidateId = user.candidate_id || user.employee_id
       
       try {
-        const { data, error } = await supabase
-          .from('candidates')
-          .select('terms_accepted, terms_accepted_at, full_name')
-          .eq('id', candidateId)
-          .single()
-
-        if (error) {
-          console.error('Error loading terms status:', error)
-          setLoadingTerms(false)
-          return
-        }
-
-        if (data) {
-          console.log('Loaded terms status:', data)
-          setTermsData(data)
-          setAccepted(data.terms_accepted || false)
-          // Pre-fill signature with full name if available
-          if (data.full_name) {
-            setSignature(data.full_name)
-          }
-        }
+        const snap = await getDoc(doc(db, 'candidates', candidateId))
+        if (!snap.exists()) { setLoadingTerms(false); return }
+        const data = snap.data()
+        setTermsData(data)
+        setAccepted(data.terms_accepted || false)
+        if (data.full_name) setSignature(data.full_name)
       } catch (err) {
         console.error('Failed to load terms status:', err)
       } finally {
@@ -71,24 +55,12 @@ export default function TermsAndConditions() {
     setLoading(true)
     try {
       const candidateId = user?.candidate_id || user?.employee_id
-      
-      // Update candidate record
-      const { error } = await supabase
-        .from('candidates')
-        .update({
-          terms_accepted: true,
-          terms_accepted_at: new Date().toISOString(),
-        })
-        .eq('id', candidateId)
-
-      if (error) throw error
-
+      await updateDoc(doc(db, 'candidates', candidateId), {
+        terms_accepted: true,
+        terms_accepted_at: new Date().toISOString(),
+      })
       toast.success('Terms accepted! Contract signed digitally.')
-
-      // Auto-complete 'Contract Signed' checklist item
-      const cId = user?.candidate_id || user?.employee_id
-      if (cId) completeByTitle.mutate({ candidateId: cId, title: 'Contract Signed', description: 'Employment contract digitally signed', category: 'legal', sort_order: 1 })
-
+      completeByTitle.mutate({ candidateId, title: 'Contract Signed', description: 'Employment contract digitally signed', category: 'legal', sort_order: 1 })
       navigate('/onboarding/documents')
     } catch (err) {
       console.error('Terms acceptance error:', err)
