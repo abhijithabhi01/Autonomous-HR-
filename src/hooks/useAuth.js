@@ -3,51 +3,16 @@
 // Uses createElement (not JSX) so this .js file parses cleanly in Vite.
 
 import { createElement, createContext, useContext, useState, useEffect } from 'react'
-import { initializeApp, getApps }                                        from 'firebase/app'
 import {
   getAuth,
   signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
 } from 'firebase/auth'
-import { doc, getDoc, setDoc, updateDoc, getFirestore } from 'firebase/firestore'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '../lib/firebase'
 
 const AuthContext = createContext(null)
-
-// ── Secondary Firebase app ────────────────────────────────────
-// Returns { auth, db } for the isolated secondary instance.
-// Lazy — only created on first signUp() call.
-//
-// KEY FIX: we also grab the secondary app's Firestore instance so that
-// when we write the profile doc, Firestore security rules evaluate
-// request.auth.uid as the NEW candidate (not the HR admin).
-// If we used the primary db after signOut() the write would be
-// authenticated as HR admin and fail with PERMISSION_DENIED.
-let _secondary = null
-function getSecondary() {
-  if (_secondary) return _secondary
-
-  const existing = getApps().find(a => a.name === 'secondary')
-  const app = existing || initializeApp(
-    {
-      apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-      authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-      projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-      storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-      appId:             import.meta.env.VITE_FIREBASE_APP_ID,
-    },
-    'secondary'
-  )
-
-  _secondary = {
-    auth: getAuth(app),
-    db:   getFirestore(app),   // ← secondary Firestore — uses secondary auth for rule evaluation
-  }
-  return _secondary
-}
 
 // ── Profile resolver ──────────────────────────────────────────
 async function resolveProfile(firebaseUser) {
@@ -94,7 +59,6 @@ export function AuthProvider({ children }) {
       const cred    = await signInWithEmailAndPassword(auth, email, _password || 'Demo1234!')
       const appUser = await resolveProfile(cred.user)
       if (!appUser) {
-        // Auth account exists but profile is missing — surface a clear error
         await signOut(auth)
         throw Object.assign(
           new Error('Your account is not fully set up yet. Please contact HR.'),
@@ -104,7 +68,7 @@ export function AuthProvider({ children }) {
       setUser(appUser)
       return appUser
     } finally {
-      setLoading(false)   // always runs — even on bad credentials
+      setLoading(false)
     }
   }
 
@@ -121,37 +85,78 @@ export function AuthProvider({ children }) {
   }
 
   // ── signUp ───────────────────────────────────────────────────
-  // Called by useAddCandidate when HR adds a new candidate.
+  // Uses the Firebase REST API instead of the SDK.
   //
-  // CRITICAL ORDER:
-  //   1. createUserWithEmailAndPassword  → secondary auth (HR session untouched)
-  //   2. setDoc profile                 → secondary db (new user is authenticated → rules pass)
-  //   3. signOut secondary              → AFTER the write, not before
+  // WHY REST API?
+  //   The SDK approach (secondary Firebase app) had a race condition:
+  //   after createUserWithEmailAndPassword the secondary Firestore
+  //   instance hadn't registered the new user's auth token yet, so the
+  //   profile setDoc hit PERMISSION_DENIED → auth account created but
+  //   no profile → "auth/email-already-in-use" on next attempt.
   //
-  // Previous code signed out BEFORE writing the profile, so Firestore
-  // evaluated request.auth.uid as the HR admin UID, not the candidate UID.
-  // That broke `allow write: if request.auth.uid == userId` rules silently.
+  //   The REST API returns the idToken immediately in the response body.
+  //   We pass it explicitly in the Firestore REST request, so there is
+  //   zero race condition and the security rule `request.auth.uid == uid`
+  //   is always satisfied.
+  //
+  //   This also means we never touch the SDK auth state → HR stays
+  //   signed in throughout.
   const signUp = async ({ email, password, name, role, candidate_id, employee_id }) => {
-    const { auth: secondaryAuth, db: secondaryDb } = getSecondary()
+    const API_KEY    = import.meta.env.VITE_FIREBASE_API_KEY
+    const PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID
 
-    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password)
-    const uid  = cred.user.uid
+    // 1. Create Firebase Auth account
+    const signUpRes = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${API_KEY}`,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, password, returnSecureToken: true }),
+      }
+    )
+    const signUpData = await signUpRes.json()
 
-    const avatar = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+    if (!signUpRes.ok) {
+      // Normalise to Firebase SDK-style error codes so callers can switch on err.code
+      const raw  = signUpData.error?.message || 'UNKNOWN'
+      const code = 'auth/' + raw.toLowerCase().replace(/_/g, '-')
+      throw Object.assign(new Error(raw), { code })
+    }
 
-    // Write profile while the new user IS authenticated in the secondary app
-    await setDoc(doc(secondaryDb, 'profiles', uid), {
-      email,
-      name,
-      role:         role         || 'employee',
-      avatar,
-      candidate_id: candidate_id || null,
-      employee_id:  employee_id  || null,
-      created_at:   new Date().toISOString(),
+    const uid     = signUpData.localId
+    const idToken = signUpData.idToken   // ← available immediately, no race condition
+    const avatar  = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
+    // 2. Write Firestore profile using the new user's ID token
+    //    Satisfies `request.auth.uid == uid` rule regardless of SDK state
+    const firestoreUrl =
+      `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}` +
+      `/databases/(default)/documents/profiles/${uid}`
+
+    const profileRes = await fetch(firestoreUrl, {
+      method:  'PATCH',
+      headers: {
+        'Authorization': `Bearer ${idToken}`,
+        'Content-Type':  'application/json',
+      },
+      body: JSON.stringify({
+        fields: {
+          email:        { stringValue: email },
+          name:         { stringValue: name },
+          role:         { stringValue: role || 'employee' },
+          avatar:       { stringValue: avatar },
+          candidate_id: candidate_id ? { stringValue: candidate_id } : { nullValue: null },
+          employee_id:  employee_id  ? { stringValue: employee_id  } : { nullValue: null },
+          created_at:   { stringValue: new Date().toISOString() },
+        },
+      }),
     })
 
-    // Sign out AFTER the profile write succeeds
-    await signOut(secondaryAuth)
+    if (!profileRes.ok) {
+      const err = await profileRes.json().catch(() => ({}))
+      throw new Error('Profile write failed: ' + (err.error?.message || profileRes.status))
+    }
+
     return uid
   }
 

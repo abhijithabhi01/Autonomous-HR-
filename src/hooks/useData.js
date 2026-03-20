@@ -1,5 +1,3 @@
-// src/hooks/useData.js
-
 import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -187,9 +185,41 @@ export function useAddCandidate() {
         authCreated = true
         console.log('[useAddCandidate] Auth + profile created for', loginEmail)
       } catch (err) {
-        console.error('[useAddCandidate] Auth/profile creation FAILED:', err.message)
-        // Even if auth fails, store credentials on the candidate doc
-        // so HR can manually create the account or share credentials
+        if (err.code === 'auth/email-already-in-use') {
+          // Auth account exists from a previous failed attempt.
+          // The new signUp() uses REST API which prevents this going forward,
+          // but existing orphaned accounts need a one-time manual fix:
+          //   Firebase Console → Authentication → delete the account for this email
+          //   then re-add the candidate here.
+          //
+          // Try to re-link if a profile exists:
+          try {
+            const profileSnap = await getDocs(
+              query(collection(db, 'profiles'), where('email', '==', loginEmail))
+            )
+            if (!profileSnap.empty) {
+              await updateDoc(doc(db, 'profiles', profileSnap.docs[0].id), {
+                candidate_id: candidateRef.id,
+              })
+              authCreated = true
+              console.log('[useAddCandidate] Re-linked existing auth account for', loginEmail)
+            } else {
+              // Orphaned auth account — profile was never created.
+              // We cannot recover this programmatically from the client.
+              // HR must delete the account in Firebase Console and re-add.
+              console.warn('[useAddCandidate] ORPHANED AUTH — no profile for:', loginEmail)
+              toast.error(
+                `⚠️ Account already exists for ${loginEmail} but setup is incomplete.\n\n` +
+                `Fix: Firebase Console → Authentication → delete ${loginEmail} → re-add this candidate.`,
+                { duration: 15000, style: { background: '#1a0a0a', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', fontSize: '13px', whiteSpace: 'pre-line', maxWidth: '460px' } }
+              )
+            }
+          } catch (linkErr) {
+            console.error('[useAddCandidate] Profile re-link failed:', linkErr.message)
+          }
+        } else {
+          console.error('[useAddCandidate] Auth/profile creation FAILED:', err.message)
+        }
       }
 
       // Store temp credentials on candidate doc (HR reference, not shown to employee)
