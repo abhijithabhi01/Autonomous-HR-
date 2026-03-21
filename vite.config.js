@@ -1,30 +1,22 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// VITE_FUNCTIONS_URL (set in .env.local) enables direct Cloud Function calls
-// during local dev, bypassing the need for a Vercel/Firebase emulator.
+// Vite dev server proxies all /api/* requests to the local Express backend.
+// Start the backend first: cd backend && node server.js
+// Then in a second terminal: npm run dev
 //
-// Example .env.local:
-//   VITE_FUNCTIONS_URL=https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net
-//
-// In production (Firebase Hosting) this env var is not set — the rewrites
-// in firebase.json route /api/* to the Cloud Functions automatically.
-const functionsUrl = process.env.VITE_FUNCTIONS_URL || ''
-
-const proxyTarget = functionsUrl ? {
-  '/api/sendmail': {
-    target:      functionsUrl,
-    changeOrigin: true,
-    rewrite:     () => '/sendWelcomeEmail',
-  },
-  '/api/deleteOrphanedAuth': {
-    target:      functionsUrl,
-    changeOrigin: true,
-    rewrite:     () => '/deleteOrphanedAuth',
-  },
-} : {}
+// In production (Firebase Hosting) the rewrites in firebase.json
+// handle /api/* routing to Cloud Functions — no proxy needed there.
 
 export default defineConfig({
   plugins: [react()],
-  server: { proxy: proxyTarget },
+  server: {
+    proxy: {
+      '/api': {
+        target:       'http://localhost:3001',
+        changeOrigin: true,
+        // No rewrite needed — backend routes match /api/sendmail etc. exactly
+      },
+    },
+  },
 })

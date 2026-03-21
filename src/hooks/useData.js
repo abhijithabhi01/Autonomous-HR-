@@ -63,7 +63,7 @@ function debounce(key, fn, delay = 400) {
 //
 // Either way the same fetch('/api/sendmail', ...) call works.
 // ─────────────────────────────────────────────────────────────
-async function sendWelcomeEmail({ toEmail, toName, loginEmail, tempPassword, position, department, startDate }) {
+async function sendWelcomeEmail({ toEmail, toName, loginEmail, tempPassword, workEmail, position, department, startDate }) {
   // In local dev, VITE_FUNCTIONS_URL lets us reach the deployed Cloud Function
   // directly, bypassing the missing Vite proxy.  In production the rewrite handles it.
   const base     = (import.meta.env.VITE_FUNCTIONS_URL || '').replace(/\/$/, '')
@@ -74,6 +74,7 @@ async function sendWelcomeEmail({ toEmail, toName, loginEmail, tempPassword, pos
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       toEmail, toName, loginEmail, tempPassword,
+      workEmail: workEmail || null,
       position, department, startDate: startDate || null,
       portalUrl: window.location.origin + '/login',
     }),
@@ -91,9 +92,15 @@ export function useCandidates() {
   return useQuery({
     queryKey: ['candidates'],
     queryFn: async () => {
-      const q    = query(collection(db, 'candidates'), where('graduated_at', '==', null), orderBy('created_at', 'desc'))
+      // NOTE: We intentionally do NOT combine where('graduated_at','==',null)
+      // with orderBy('created_at','desc') here — that combination requires a
+      // composite Firestore index which won't exist until explicitly deployed.
+      // Instead we orderBy on a single field (auto-indexed) and filter in JS.
+      const q    = query(collection(db, 'candidates'), orderBy('created_at', 'desc'))
       const snap = await getDocs(q)
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      return snap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(c => c.graduated_at == null)   // client-side — same result, no composite index needed
     },
   })
 }
@@ -292,6 +299,7 @@ export function useAddCandidate() {
           toName:      fields.full_name,
           loginEmail,
           tempPassword,
+          workEmail:   finalEmail,
           position:    fields.position,
           department:  fields.department,
           startDate:   fields.start_date,
@@ -607,7 +615,7 @@ export function useRealtimeSync() {
   const queryClient = useQueryClient()
   useEffect(() => {
     const unsubCandidates = onSnapshot(
-      query(collection(db, 'candidates'), where('graduated_at', '==', null)),
+      collection(db, 'candidates'),  // no where() here — avoids composite index requirement
       () => debounce('candidates', () => {
         queryClient.invalidateQueries({ queryKey: ['candidates'] })
         queryClient.invalidateQueries({ queryKey: ['candidate'] })
