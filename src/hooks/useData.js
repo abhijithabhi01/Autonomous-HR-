@@ -312,7 +312,7 @@ export function useAddCandidate() {
       queryClient.invalidateQueries({ queryKey: ['provisioning_requests'] })
 
       const authLine  = authCreated ? `✅ Login ready` : `⚠️ Auth creation failed — check console`
-      const emailLine = emailSent   ? `✉️  Email sent to ${loginEmail}` : `📋 Email not sent — share credentials manually`
+      const emailLine = emailSent   ? `✉️ Welcome mail sent` : `📋 Email not sent — share credentials manually`
 
       toast.success(
         `✅ ${candidate.full_name} added!\n\n` +
