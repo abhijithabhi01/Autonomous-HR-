@@ -62,8 +62,10 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
     if (!form.full_name.trim())           e.full_name = 'Full name is required'
     else if (form.full_name.trim().length < 3) e.full_name = 'Must be at least 3 characters'
 
-    if (form.personal_email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email))
-      e.personal_email = 'Enter a valid email'
+    if (!form.personal_email.trim())
+      e.personal_email = 'Personal email is required — credentials are sent here'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email))
+      e.personal_email = 'Enter a valid email address'
 
     if (!form.position.trim())            e.position = 'Position is required'
 
@@ -110,8 +112,8 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
             </div>
 
             <div className="col-span-2">
-              <Field label="Personal Email" name="personal_email" type="email"
-                hint="Welcome email sent here. Work email (firstname.lastname@Dcompany.com) is auto-generated."
+              <Field label="Personal Email" name="personal_email" type="email" required
+                hint="Login credentials are emailed here. Work email (firstname.lastname@dcompany.com) is auto-generated."
                 value={form.personal_email} onChange={set} error={errors.personal_email} />
             </div>
 

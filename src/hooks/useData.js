@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   collection, doc,
   getDocs, getDoc, addDoc, updateDoc, deleteDoc,
-  query, where, orderBy, onSnapshot,
+  query, where, orderBy, onSnapshot, writeBatch,
 } from 'firebase/firestore'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../lib/firebase'
@@ -36,24 +36,40 @@ function iconForType(type) {
            bank_details:'-', aadhaar:'-', pan_card:'-' }[type] || '-'
 }
 
+// ── Debounce helper ───────────────────────────────────────────
+// Used in useRealtimeSync to batch rapid Firestore writes into
+// a single invalidation tick so the UI doesn't flicker.
+const _timers = {}
+function debounce(key, fn, delay = 400) {
+  clearTimeout(_timers[key])
+  _timers[key] = setTimeout(fn, delay)
+}
+
 // ============================================================
-// WELCOME EMAIL — via Vercel serverless function → Resend
+// WELCOME EMAIL
 // ============================================================
-// Deploy setup:
-//   1. npm install -g vercel
-//   2. vercel login
-//   3. vercel deploy  (from project root)
-//   4. Add RESEND_API_KEY + RESEND_FROM in Vercel dashboard → Settings → Env Vars
-//   5. Redeploy after adding env vars
+// Two deployment modes:
 //
-// Local dev: run  vercel dev  instead of  npm run dev
-//            (serves Vite + /api/* functions on the same port)
+// 1. LOCAL DEV:
+//    Set VITE_FUNCTIONS_URL in .env.local:
+//      VITE_FUNCTIONS_URL=https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net
+//    The email call will hit the deployed Cloud Function directly.
+//    (No Vercel CLI needed, no proxy needed.)
 //
-// The /api/send-email endpoint is defined in  api/send-email.js
-// at the project root (next to package.json).
+// 2. PRODUCTION (Firebase Hosting):
+//    VITE_FUNCTIONS_URL is not set (leave it empty or omit it).
+//    Firebase Hosting rewrites /api/sendmail → sendWelcomeEmail Cloud Function
+//    via the rule in firebase.json.
+//
+// Either way the same fetch('/api/sendmail', ...) call works.
 // ─────────────────────────────────────────────────────────────
 async function sendWelcomeEmail({ toEmail, toName, loginEmail, tempPassword, position, department, startDate }) {
-  const res = await fetch('/api/sendmail', {
+  // In local dev, VITE_FUNCTIONS_URL lets us reach the deployed Cloud Function
+  // directly, bypassing the missing Vite proxy.  In production the rewrite handles it.
+  const base     = (import.meta.env.VITE_FUNCTIONS_URL || '').replace(/\/$/, '')
+  const endpoint = base ? `${base}/sendWelcomeEmail` : '/api/sendmail'
+
+  const res = await fetch(endpoint, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -124,7 +140,7 @@ export function useAddCandidate() {
         }
       }
 
-      // 1. Candidate document
+      // ── 1. Candidate document ─────────────────────────────
       const candidateRef = await addDoc(collection(db, 'candidates'), {
         avatar,
         full_name:           fields.full_name,
@@ -141,24 +157,32 @@ export function useAddCandidate() {
         created_at:          now(),
       })
 
-      // 2. Seed checklist
-      await Promise.all([
+      // ── 2. Seed checklist via writeBatch ──────────────────
+      // CRITICAL: Using writeBatch instead of Promise.all(11 addDoc calls)
+      // reduces Firestore write events from 11 → 1, which means the
+      // onSnapshot listener fires once (not 11 times), preventing the
+      // cascading re-renders that caused the page to flicker/refresh.
+      const checklistItems = [
         { title: 'Profile Completed',     description: 'Personal profile and photo uploaded',     category: 'hr',        sort_order: 0  },
         { title: 'Contract Signed',       description: 'Employment contract digitally signed',     category: 'legal',     sort_order: 1  },
         { title: 'Documents Submitted',   description: 'All required documents uploaded',          category: 'documents', sort_order: 2  },
         { title: 'Documents Verified',    description: 'AI verification of all documents',         category: 'documents', sort_order: 3  },
         { title: 'Company Email Created', description: 'Google Workspace account provisioned',     category: 'it',        sort_order: 4  },
-        { title: 'System Access Granted', description: 'Access to required tools and platforms',  category: 'it',        sort_order: 5  },
-        { title: 'Payroll Setup',         description: 'Salary account and payroll configured',   category: 'hr',        sort_order: 6  },
-        { title: 'ID Card Issued',        description: 'Company ID card processed and issued',    category: 'hr',        sort_order: 7  },
+        { title: 'System Access Granted', description: 'Access to required tools and platforms',   category: 'it',        sort_order: 5  },
+        { title: 'Payroll Setup',         description: 'Salary account and payroll configured',    category: 'hr',        sort_order: 6  },
+        { title: 'ID Card Issued',        description: 'Company ID card processed and issued',     category: 'hr',        sort_order: 7  },
         { title: 'Policy Training',       description: 'Mandatory compliance and policy training', category: 'training',  sort_order: 8  },
         { title: 'Team Introduction',     description: 'Met with immediate team and manager',      category: 'social',    sort_order: 9  },
-        { title: 'Day 7 Check-in',        description: 'One week wellbeing check-in',             category: 'wellbeing', sort_order: 10 },
-      ].map(item => addDoc(collection(db, 'checklist_items'), {
-        ...item, candidate_id: candidateRef.id, completed: false, completed_at: null
-      })))
+        { title: 'Day 7 Check-in',        description: 'One week wellbeing check-in',              category: 'wellbeing', sort_order: 10 },
+      ]
+      const batch = writeBatch(db)
+      checklistItems.forEach(item => {
+        const itemRef = doc(collection(db, 'checklist_items'))
+        batch.set(itemRef, { ...item, candidate_id: candidateRef.id, completed: false, completed_at: null })
+      })
+      await batch.commit()
 
-      // 3. IT provisioning
+      // ── 3. IT provisioning ────────────────────────────────
       await addDoc(collection(db, 'provisioning_requests'), {
         candidate_id: candidateRef.id, candidate_name: fields.full_name,
         work_email: finalEmail, position: fields.position, department: fields.department,
@@ -167,9 +191,7 @@ export function useAddCandidate() {
         systems_provisioned: {}, created_at: now(),
       })
 
-      // 4. Firebase Auth account + Firestore profile
-      //    loginEmail = what the candidate uses to sign in.
-      //    tempPassword stored on the candidate doc so HR always has access.
+      // ── 4. Firebase Auth account + Firestore profile ──────
       const tempPassword = 'Welcome' + Math.floor(1000 + Math.random() * 9000) + '!'
       const loginEmail   = personalEmail || finalEmail
       let authCreated    = false
@@ -186,57 +208,83 @@ export function useAddCandidate() {
         console.log('[useAddCandidate] Auth + profile created for', loginEmail)
       } catch (err) {
         if (err.code === 'auth/email-already-in-use' || err.code === 'auth/email-exists' || err.message === 'EMAIL_EXISTS') {
-          // Auth account exists from a previous failed attempt.
-          // The new signUp() uses REST API which prevents this going forward,
-          // but existing orphaned accounts need a one-time manual fix:
-          //   Firebase Console → Authentication → delete the account for this email
-          //   then re-add the candidate here.
-          //
-          // Try to re-link if a profile exists:
+          // ── Orphaned auth recovery ─────────────────────────
+          // A Firebase Auth account exists for this email but no Firestore
+          // profile was ever written (from a previous failed attempt).
+          // Strategy:
+          //   1. Try re-linking if a profile already exists.
+          //   2. If not, call the deleteOrphanedAuth Cloud Function (Admin SDK)
+          //      which deletes the ghost account — then retry signUp.
+          console.warn('[useAddCandidate] Email already in use, attempting recovery for:', loginEmail)
+
           try {
+            // Step 1: check for an existing profile to re-link
             const profileSnap = await getDocs(
               query(collection(db, 'profiles'), where('email', '==', loginEmail))
             )
             if (!profileSnap.empty) {
-              await updateDoc(doc(db, 'profiles', profileSnap.docs[0].id), {
-                candidate_id: candidateRef.id,
-              })
+              await updateDoc(doc(db, 'profiles', profileSnap.docs[0].id), { candidate_id: candidateRef.id })
               authCreated = true
-              console.log('[useAddCandidate] Re-linked existing auth account for', loginEmail)
+              console.log('[useAddCandidate] Re-linked existing profile for', loginEmail)
             } else {
-              // Orphaned auth account — profile was never created.
-              // We cannot recover this programmatically from the client.
-              // HR must delete the account in Firebase Console and re-add.
-              console.warn('[useAddCandidate] ORPHANED AUTH — no profile for:', loginEmail)
-              toast.error(
-                `⚠️ Account already exists for ${loginEmail} but setup is incomplete.\n\n` +
-                `Fix: Firebase Console → Authentication → delete ${loginEmail} → re-add this candidate.`,
-                { duration: 15000, style: { background: '#1a0a0a', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', fontSize: '13px', whiteSpace: 'pre-line', maxWidth: '460px' } }
-              )
+              // Step 2: call Cloud Function to delete the orphaned auth account
+              const base     = (import.meta.env.VITE_FUNCTIONS_URL || '').replace(/\/$/, '')
+              const endpoint = base ? `${base}/deleteOrphanedAuth` : '/api/deleteOrphanedAuth'
+              const cleanRes = await fetch(endpoint, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({ email: loginEmail }),
+              })
+              if (cleanRes.ok) {
+                // Orphaned account deleted — retry signUp with the new password
+                console.log('[useAddCandidate] Orphaned auth cleaned up, retrying signUp for', loginEmail)
+                await signUp({
+                  email:        loginEmail,
+                  password:     tempPassword,
+                  name:         fields.full_name,
+                  role:         'employee',
+                  candidate_id: candidateRef.id,
+                })
+                authCreated = true
+                console.log('[useAddCandidate] Auth + profile created (after cleanup) for', loginEmail)
+              } else {
+                // Cloud Function not deployed yet — inform HR clearly
+                console.warn('[useAddCandidate] deleteOrphanedAuth unavailable — manual cleanup needed')
+                toast.error(
+                  `⚠️ Orphaned account for ${loginEmail}.\n\n` +
+                  `Quick fix: Firebase Console → Authentication → Users → delete ${loginEmail} → then re-add this candidate.\n\n` +
+                  `Or deploy the Cloud Functions (cd functions && firebase deploy --only functions) to enable auto-recovery.`,
+                  {
+                    duration: 20000,
+                    style: { background: '#1a0a0a', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', fontSize: '13px', whiteSpace: 'pre-line', maxWidth: '500px' },
+                  }
+                )
+              }
             }
-          } catch (linkErr) {
-            console.error('[useAddCandidate] Profile re-link failed:', linkErr.message)
+          } catch (recoveryErr) {
+            console.error('[useAddCandidate] Recovery failed:', recoveryErr.message)
           }
         } else {
-          console.error('[useAddCandidate] Auth/profile creation FAILED:', err.message)
+          // Unexpected error (network, bad API key, etc.) — clean up and surface it
+          console.error('[useAddCandidate] Auth creation FAILED:', err.message)
+          try { await deleteDoc(doc(db, 'candidates', candidateRef.id)) } catch (_) {}
+          throw new Error('Could not create login account: ' + (err.message || err.code))
         }
       }
 
-      // Store temp credentials on candidate doc (HR reference, not shown to employee)
-      // Wrapped in try/catch so a rules error here never causes mutationFn to throw
-      // (which would trigger the catch in handleAdd and reopen the modal).
+      // ── 5. Store credentials on candidate doc ─────────────
       try {
         await updateDoc(doc(db, 'candidates', candidateRef.id), {
-          login_email:    loginEmail,
-          temp_password:  tempPassword,
-          auth_created:   authCreated,
-          work_email:     finalEmail,
+          login_email:   loginEmail,
+          temp_password: tempPassword,
+          auth_created:  authCreated,
+          work_email:    finalEmail,
         })
       } catch (credErr) {
         console.warn('[useAddCandidate] Could not store temp credentials:', credErr.message)
       }
 
-      // 5. Welcome email via Vercel → Resend
+      // ── 6. Welcome email ──────────────────────────────────
       let emailSent = false
       try {
         await sendWelcomeEmail({
@@ -253,26 +301,15 @@ export function useAddCandidate() {
         console.warn('[useAddCandidate] Email failed:', emailErr.message)
       }
 
-      return {
-        candidate:   { id: candidateRef.id, ...fields },
-        loginEmail,
-        workEmail:   finalEmail,
-        tempPassword,
-        authCreated,
-        emailSent,
-      }
+      return { candidate: { id: candidateRef.id, ...fields }, loginEmail, workEmail: finalEmail, tempPassword, authCreated, emailSent }
     },
 
     onSuccess: ({ candidate, loginEmail, workEmail, tempPassword, authCreated, emailSent }) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] })
       queryClient.invalidateQueries({ queryKey: ['provisioning_requests'] })
 
-      const authLine  = authCreated
-        ? `✅ Login ready`
-        : `⚠️ Auth creation failed — check console`
-      const emailLine = emailSent
-        ? `✉️  Email sent to ${loginEmail}`
-        : `📋 Email not sent — share credentials manually`
+      const authLine  = authCreated ? `✅ Login ready` : `⚠️ Auth creation failed — check console`
+      const emailLine = emailSent   ? `✉️  Email sent to ${loginEmail}` : `📋 Email not sent — share credentials manually`
 
       toast.success(
         `✅ ${candidate.full_name} added!\n\n` +
@@ -561,23 +598,41 @@ export function useAddPolicyMessage() {
 // ============================================================
 // REALTIME SYNC
 // ============================================================
+// Each onSnapshot callback is debounced so that a burst of rapid
+// Firestore writes (e.g. seeding 11 checklist items at once) only
+// triggers ONE query invalidation after the dust settles, instead
+// of 11 back-to-back invalidations that make the UI flicker.
+// ─────────────────────────────────────────────────────────────
 export function useRealtimeSync() {
   const queryClient = useQueryClient()
   useEffect(() => {
     const unsubCandidates = onSnapshot(
       query(collection(db, 'candidates'), where('graduated_at', '==', null)),
-      () => { queryClient.invalidateQueries({ queryKey: ['candidates'] }); queryClient.invalidateQueries({ queryKey: ['candidate'] }) }
+      () => debounce('candidates', () => {
+        queryClient.invalidateQueries({ queryKey: ['candidates'] })
+        queryClient.invalidateQueries({ queryKey: ['candidate'] })
+      })
     )
     const unsubChecklist = onSnapshot(
       collection(db, 'checklist_items'),
-      () => { queryClient.invalidateQueries({ queryKey: ['checklist'] }); queryClient.invalidateQueries({ queryKey: ['candidates'] }) }
+      () => debounce('checklist', () => {
+        queryClient.invalidateQueries({ queryKey: ['checklist'] })
+        queryClient.invalidateQueries({ queryKey: ['candidates'] })
+      })
     )
-    const unsubDocs   = onSnapshot(collection(db, 'documents'),
-      () => queryClient.invalidateQueries({ queryKey: ['documents'] }))
+    const unsubDocs = onSnapshot(
+      collection(db, 'documents'),
+      () => debounce('documents', () => queryClient.invalidateQueries({ queryKey: ['documents'] }))
+    )
     const unsubAlerts = onSnapshot(
       query(collection(db, 'alerts'), where('resolved', '==', false)),
-      () => queryClient.invalidateQueries({ queryKey: ['alerts'] }))
-    console.log('[realtime] Firebase listeners active')
-    return () => { unsubCandidates(); unsubChecklist(); unsubDocs(); unsubAlerts() }
+      () => debounce('alerts', () => queryClient.invalidateQueries({ queryKey: ['alerts'] }))
+    )
+    console.log('[realtime] Firebase listeners active (debounced)')
+    return () => {
+      unsubCandidates(); unsubChecklist(); unsubDocs(); unsubAlerts()
+      // Clear any pending debounce timers on unmount
+      Object.keys(_timers).forEach(k => { clearTimeout(_timers[k]); delete _timers[k] })
+    }
   }, [queryClient])
 }

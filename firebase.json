@@ -8,6 +8,7 @@
   "functions": [
     {
       "codebase": "default",
+      "source": "functions",
       "disallowLegacyRuntimeConfig": true,
       "ignore": [
         "node_modules",
@@ -15,24 +16,27 @@
         "firebase-debug.log",
         "firebase-debug.*.log",
         "*.local"
-      ],
-      "predeploy": [
-        "npm --prefix \"$RESOURCE_DIR\" run lint"
-      ],
-      "source": "functions"
-    },
-    {
-      "source": "functions-email",
-      "codebase": "functions-email",
-      "disallowLegacyRuntimeConfig": true,
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ],
-      "predeploy": []
+      ]
     }
-  ]
+  ],
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/api/sendmail",
+        "function": "sendWelcomeEmail",
+        "region": "us-central1"
+      },
+      {
+        "source": "/api/deleteOrphanedAuth",
+        "function": "deleteOrphanedAuth",
+        "region": "us-central1"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
 }

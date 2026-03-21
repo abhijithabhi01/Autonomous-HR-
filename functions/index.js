@@ -223,3 +223,68 @@ exports.sendWelcomeEmail = onRequest({ timeoutSeconds: 30 }, async (req, res) =>
     res.status(500).json({ error: err.message })
   }
 })
+// ============================================================
+// 3. DELETE ORPHANED AUTH ACCOUNT  (Admin SDK)
+// ============================================================
+// Called by the client when it detects email-already-in-use but
+// no Firestore profile exists — i.e. an auth account was created
+// in a previous failed attempt without a matching profile.
+//
+// The Admin SDK can delete any auth account by email, which the
+// client SDK cannot.  After deletion, the client retries signUp.
+// ─────────────────────────────────────────────────────────────
+const admin = require('firebase-admin')
+
+// Initialize admin only once (guard against multiple requires)
+if (!admin.apps.length) {
+  admin.initializeApp()
+}
+
+exports.deleteOrphanedAuth = onRequest({ timeoutSeconds: 15 }, async (req, res) => {
+  setCors(res)
+  if (req.method === 'OPTIONS') { res.status(204).send(''); return }
+  if (req.method !== 'POST')    { res.status(405).json({ error: 'Method not allowed' }); return }
+
+  const { email } = req.body
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    res.status(400).json({ error: 'Valid email is required' })
+    return
+  }
+
+  try {
+    // Look up the auth account by email
+    const userRecord = await admin.auth().getUserByEmail(email)
+
+    // Safety check: only delete accounts that have NO Firestore profile
+    // (i.e. genuinely orphaned). If a profile exists, refuse the delete
+    // so we don't accidentally nuke a legitimate account.
+    const profileSnap = await admin.firestore()
+      .collection('profiles')
+      .doc(userRecord.uid)
+      .get()
+
+    if (profileSnap.exists) {
+      console.warn('[deleteOrphanedAuth] Profile exists for', email, '— refusing delete')
+      res.status(409).json({
+        error: 'Account has a profile and is not orphaned. Manual review required.',
+        uid: userRecord.uid,
+      })
+      return
+    }
+
+    // Profile doesn't exist → safe to delete the orphaned auth account
+    await admin.auth().deleteUser(userRecord.uid)
+    console.log('[deleteOrphanedAuth] Deleted orphaned auth account for', email, 'uid:', userRecord.uid)
+    res.json({ success: true, deleted: email })
+
+  } catch (err) {
+    if (err.code === 'auth/user-not-found') {
+      // Already deleted — that's fine, return success so client can retry signUp
+      console.log('[deleteOrphanedAuth] Account not found (already deleted):', email)
+      res.json({ success: true, deleted: email, note: 'account was already absent' })
+    } else {
+      console.error('[deleteOrphanedAuth] Error:', err)
+      res.status(500).json({ error: err.message })
+    }
+  }
+})
