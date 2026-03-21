@@ -48,26 +48,19 @@ function debounce(key, fn, delay = 400) {
 // ============================================================
 // WELCOME EMAIL
 // ============================================================
-// Two deployment modes:
+// LOCAL DEV:   Vite proxy forwards /api/* → http://localhost:3001
+//              (configured in vite.config.js, no env var needed)
 //
-// 1. LOCAL DEV:
-//    Set VITE_FUNCTIONS_URL in .env.local:
-//      VITE_FUNCTIONS_URL=https://us-central1-YOUR_PROJECT_ID.cloudfunctions.net
-//    The email call will hit the deployed Cloud Function directly.
-//    (No Vercel CLI needed, no proxy needed.)
-//
-// 2. PRODUCTION (Firebase Hosting):
-//    VITE_FUNCTIONS_URL is not set (leave it empty or omit it).
-//    Firebase Hosting rewrites /api/sendmail → sendWelcomeEmail Cloud Function
-//    via the rule in firebase.json.
-//
-// Either way the same fetch('/api/sendmail', ...) call works.
+// PRODUCTION:  Set VITE_BACKEND_URL in Vercel dashboard → Settings → Environment Variables
+//              to your deployed Railway backend URL, e.g.:
+//              VITE_BACKEND_URL=https://your-app.railway.app
+//              The frontend then calls that URL directly.
 // ─────────────────────────────────────────────────────────────
 async function sendWelcomeEmail({ toEmail, toName, loginEmail, tempPassword, workEmail, position, department, startDate }) {
-  // In local dev, VITE_FUNCTIONS_URL lets us reach the deployed Cloud Function
-  // directly, bypassing the missing Vite proxy.  In production the rewrite handles it.
-  const base     = (import.meta.env.VITE_FUNCTIONS_URL || '').replace(/\/$/, '')
-  const endpoint = base ? `${base}/sendWelcomeEmail` : '/api/sendmail'
+  // VITE_BACKEND_URL is set in Vercel env vars → points to Railway backend
+  // In local dev it's empty → Vite proxy handles /api/* → localhost:3001
+  const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+  const endpoint = base ? `${base}/api/sendmail` : '/api/sendmail'
 
   const res = await fetch(endpoint, {
     method:  'POST',
@@ -131,7 +124,7 @@ export function useAddCandidate() {
       // ── personal email uniqueness ─────────────────────────
       if (personalEmail) {
         const check = await getDocs(query(collection(db, 'candidates'), where('personal_email', '==', personalEmail)))
-        if (!check.empty) throw new Error(`A candidate with this email already exists.`)
+        if (!check.empty) throw new Error(`A candidate with "${personalEmail}" already exists.`)
       }
 
       // ── work email uniqueness ─────────────────────────────
@@ -235,8 +228,8 @@ export function useAddCandidate() {
               console.log('[useAddCandidate] Re-linked existing profile for', loginEmail)
             } else {
               // Step 2: call Cloud Function to delete the orphaned auth account
-              const base     = (import.meta.env.VITE_FUNCTIONS_URL || '').replace(/\/$/, '')
-              const endpoint = base ? `${base}/deleteOrphanedAuth` : '/api/deleteOrphanedAuth'
+              const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+              const endpoint = base ? `${base}/api/deleteOrphanedAuth` : '/api/deleteOrphanedAuth'
               const cleanRes = await fetch(endpoint, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -343,13 +336,93 @@ export function useAddCandidate() {
 export function useDeleteCandidate() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async (id) => { await deleteDoc(doc(db, 'candidates', id)); return id },
-    onSuccess: () => {
+    mutationFn: async (id) => {
+      // ── 1. Fetch candidate doc first (need login_email for auth delete) ──
+      const candidateSnap = await getDoc(doc(db, 'candidates', id))
+      if (!candidateSnap.exists()) throw new Error('Candidate not found')
+      const candidate = candidateSnap.data()
+      const loginEmail = candidate.login_email || candidate.personal_email || null
+
+      // ── 2. Collect all related Firestore docs in parallel ────────────────
+      const [checklistSnap, provSnap, docsSnap, profileSnap] = await Promise.all([
+        getDocs(query(collection(db, 'checklist_items'),        where('candidate_id', '==', id))),
+        getDocs(query(collection(db, 'provisioning_requests'),  where('candidate_id', '==', id))),
+        getDocs(query(collection(db, 'documents'),              where('candidate_id', '==', id))),
+        getDocs(query(collection(db, 'profiles'),               where('candidate_id', '==', id))),
+      ])
+
+      // ── 3. Batch-delete all Firestore records ────────────────────────────
+      // Firestore batch limit is 500 writes — split if needed
+      const allDocs = [
+        ...checklistSnap.docs,
+        ...provSnap.docs,
+        ...docsSnap.docs,
+        ...profileSnap.docs,
+      ]
+
+      // Process in chunks of 499 (leave 1 slot for the candidate doc itself)
+      const CHUNK = 499
+      for (let i = 0; i < allDocs.length; i += CHUNK) {
+        const batch = writeBatch(db)
+        allDocs.slice(i, i + CHUNK).forEach(d => batch.delete(d.ref))
+        await batch.commit()
+      }
+
+      // ── 4. Delete the candidate document itself ──────────────────────────
+      await deleteDoc(doc(db, 'candidates', id))
+
+      // ── 5. Delete Firebase Auth account via backend ──────────────────────
+      let authDeleted = false
+      if (loginEmail) {
+        try {
+          const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+          const endpoint = base ? `${base}/api/deleteUser` : '/api/deleteUser'
+          const r = await fetch(endpoint, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ email: loginEmail }),
+          })
+          if (r.ok) {
+            authDeleted = true
+            console.log('[useDeleteCandidate] Auth account deleted for', loginEmail)
+          } else {
+            const err = await r.json().catch(() => ({}))
+            console.warn('[useDeleteCandidate] Auth delete failed:', err.error)
+          }
+        } catch (err) {
+          console.warn('[useDeleteCandidate] Auth delete request failed:', err.message)
+        }
+      }
+
+      return { id, loginEmail, authDeleted }
+    },
+    onSuccess: ({ loginEmail, authDeleted }) => {
       queryClient.invalidateQueries({ queryKey: ['candidates'] })
       queryClient.invalidateQueries({ queryKey: ['provisioning_requests'] })
-      toast.success('Candidate removed')
+      queryClient.invalidateQueries({ queryKey: ['checklist'] })
+      queryClient.invalidateQueries({ queryKey: ['documents'] })
+
+      const authNote = authDeleted
+        ? '🔐 Login account removed'
+        : loginEmail
+          ? `⚠️ Login account for ${loginEmail} may need manual removal in Firebase Console → Authentication`
+          : ''
+
+      toast.success(
+        `🗑 Candidate removed
+${authNote}`.trim(),
+        {
+          duration: authDeleted ? 4000 : 10000,
+          style: {
+            background: '#0C1120', color: '#E2E8F0',
+            border: '1px solid rgba(239,68,68,0.2)',
+            borderRadius: '12px', fontSize: '13px',
+            whiteSpace: 'pre-line',
+          },
+        }
+      )
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => toast.error('Delete failed: ' + err.message),
   })
 }
 
