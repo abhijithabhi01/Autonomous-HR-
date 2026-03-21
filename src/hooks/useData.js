@@ -131,7 +131,7 @@ export function useAddCandidate() {
       // ── personal email uniqueness ─────────────────────────
       if (personalEmail) {
         const check = await getDocs(query(collection(db, 'candidates'), where('personal_email', '==', personalEmail)))
-        if (!check.empty) throw new Error(`A candidate with "${personalEmail}" already exists.`)
+        if (!check.empty) throw new Error(`A candidate with this email already exists.`)
       }
 
       // ── work email uniqueness ─────────────────────────────
