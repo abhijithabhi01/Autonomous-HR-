@@ -197,7 +197,8 @@ export function useAddCandidate() {
       let authCreated    = false
 
       try {
-        await signUp({
+      let authUid = null
+        authUid = await signUp({
           email:        loginEmail,
           password:     tempPassword,
           name:         fields.full_name,
@@ -238,7 +239,7 @@ export function useAddCandidate() {
               if (cleanRes.ok) {
                 // Orphaned account deleted — retry signUp with the new password
                 console.log('[useAddCandidate] Orphaned auth cleaned up, retrying signUp for', loginEmail)
-                await signUp({
+                authUid = await signUp({
                   email:        loginEmail,
                   password:     tempPassword,
                   name:         fields.full_name,
@@ -278,6 +279,7 @@ export function useAddCandidate() {
           login_email:   loginEmail,
           temp_password: tempPassword,
           auth_created:  authCreated,
+          auth_uid:      authUid,      // stored so deletion works by UID
           work_email:    finalEmail,
         })
       } catch (credErr) {
@@ -314,9 +316,6 @@ export function useAddCandidate() {
 
       toast.success(
         `✅ ${candidate.full_name} added!\n\n` +
-        `🔑 Login: ${loginEmail}\n` +
-        `🔐 Password: ${tempPassword}\n` +
-        `📧 Work email: ${workEmail}\n\n` +
         `${authLine}\n${emailLine}`,
         {
           duration: 20000,
@@ -342,6 +341,7 @@ export function useDeleteCandidate() {
       if (!candidateSnap.exists()) throw new Error('Candidate not found')
       const candidate = candidateSnap.data()
       const loginEmail = candidate.login_email || candidate.personal_email || null
+      const authUid    = candidate.auth_uid || null  // preferred — uid is more reliable than email lookup
 
       // ── 2. Collect all related Firestore docs in parallel ────────────────
       const [checklistSnap, provSnap, docsSnap, profileSnap] = await Promise.all([
@@ -380,7 +380,7 @@ export function useDeleteCandidate() {
           const r = await fetch(endpoint, {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ email: loginEmail }),
+            body:    JSON.stringify({ uid: authUid, email: loginEmail }),  // uid preferred, email fallback
           })
           if (r.ok) {
             authDeleted = true
