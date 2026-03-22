@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useAlerts, useCandidates, useRealtimeSync } from '../../hooks/useData'
@@ -136,8 +136,18 @@ export default function HRLayout() {
   const [drawerOpen, setDrawerOpen]       = useState(false)
   const [signOutOpen, setSignOutOpen]     = useState(false)
   const [signingOut, setSigningOut]       = useState(false)
-  // Live sync — auto-refreshes candidates, checklist, docs, alerts
-  useRealtimeSync()
+
+  // Listen for modal-open events dispatched by any child page
+  // so polling can be paused while a form is open.
+  const [modalOpen, setModalOpen] = useState(false)
+  useEffect(() => {
+    const handler = (e) => setModalOpen(e.detail?.open ?? false)
+    window.addEventListener('hr:modal', handler)
+    return () => window.removeEventListener('hr:modal', handler)
+  }, [])
+
+  // Live sync — paused when any modal is open to prevent mid-form re-renders
+  useRealtimeSync({ pausePolling: modalOpen || signOutOpen })
 
   const { data: alerts = [] }             = useAlerts()
   const { data: candidates = [] } = useCandidates()

@@ -2,7 +2,7 @@
 // All data operations go through the backend API.
 // No Firebase SDK imports — Firebase lives entirely on the backend.
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 
@@ -347,12 +347,23 @@ export function useAddPolicyMessage() {
 // for an onboarding app where real-time is nice-to-have, not critical.
 // For true real-time, a WebSocket layer can be added to the backend later.
 // ─────────────────────────────────────────────────────────────
-export function useRealtimeSync() {
-  const queryClient = useQueryClient()
+export function useRealtimeSync({ pausePolling = false } = {}) {
+  const queryClient    = useQueryClient()
+  // Keep a ref so the interval callback always sees the latest value
+  // without needing to be recreated every time pausePolling changes.
+  const pauseRef = useRef(pausePolling)
+  useEffect(() => { pauseRef.current = pausePolling }, [pausePolling])
+
   useEffect(() => {
     let consecutiveFailures = 0
 
     const poll = async () => {
+      // Skip invalidation while any modal is open — prevents mid-form refetches
+      if (pauseRef.current) {
+        console.log('[realtime] Polling paused (modal open) — skipping invalidation')
+        return
+      }
+
       // Check backend health before invalidating — avoids flicker on 503
       try {
         const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')

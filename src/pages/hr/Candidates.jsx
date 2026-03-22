@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Avatar from '../../components/shared/Avatar'
 import StatusBadge from '../../components/shared/StatusBadge'
@@ -201,6 +201,14 @@ export default function Candidates() {
   const [search,       setSearch]      = useState('')
   const [showAddModal, setShowAdd]     = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
+
+  // Tell HRLayout to pause realtime polling whenever a modal is open.
+  // This prevents the 30s poll from invalidating queries mid-form, which
+  // would cause a re-render that resets the modal's input state.
+  useEffect(() => {
+    const isOpen = showAddModal || !!deleteTarget
+    window.dispatchEvent(new CustomEvent('hr:modal', { detail: { open: isOpen } }))
+  }, [showAddModal, deleteTarget])
 
   const filtered = candidates.filter(c => {
     const matchFilter =
