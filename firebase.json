@@ -5,34 +5,14 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
-  "functions": [
-    {
-      "codebase": "default",
-      "source": "functions",
-      "disallowLegacyRuntimeConfig": true,
-      "ignore": [
-        "node_modules",
-        ".git",
-        "firebase-debug.log",
-        "firebase-debug.*.log",
-        "*.local"
-      ]
-    }
-  ],
   "hosting": {
     "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
     "rewrites": [
-      {
-        "source": "/api/sendmail",
-        "function": "sendWelcomeEmail",
-        "region": "us-central1"
-      },
-      {
-        "source": "/api/deleteOrphanedAuth",
-        "function": "deleteOrphanedAuth",
-        "region": "us-central1"
-      },
       {
         "source": "**",
         "destination": "/index.html"

@@ -5,7 +5,6 @@ import StatusBadge from '../../components/shared/StatusBadge'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useAuth } from '../../hooks/useAuth'
 import { useDocuments, useUploadDocument, useCompleteChecklistByTitle } from '../../hooks/useData'
-import { verifyDocumentViaBackend } from '../../lib/ai'
 
 // ── Document type config ──────────────────────────────────────
 const DOC_TYPES = [
@@ -90,6 +89,22 @@ function readFileAsBase64(file) {
   })
 }
 
+// Calls backend /api/documents/verify — uses Document AI or Gemini server-side
+async function verifyViaBackend(base64, mimeType, documentType) {
+  const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+  const endpoint = base ? `${base}/api/documents/verify` : '/api/documents/verify'
+  const res = await fetch(endpoint, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ base64, mimeType, documentType }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Verification failed (${res.status})`)
+  }
+  return res.json()
+}
+
 function ConfidencePill({ value }) {
   if (!value) return null
   const cls = value >= 85 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
@@ -130,7 +145,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
 
     try {
       const base64 = await readFileAsBase64(file)
-      const result = await verifyDocumentViaBackend(base64, file.type, docType.type)
+      const result = await verifyViaBackend(base64, file.type, docType.type)
       setExtracted(result)
       // Seed editable fields from AI result (may be empty if PDF or AI failed)
       const init = {}
@@ -159,7 +174,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
     setPhase('analyzing')
     try {
       const base64 = await readFileAsBase64(pendingFile)
-      const result = await verifyDocumentViaBackend(base64, pendingFile.type, docType.type)
+      const result = await verifyViaBackend(base64, pendingFile.type, docType.type)
       setExtracted(result)
       const init = {}
       docType.fields.forEach(f => { init[f.key] = result[f.key] ?? '' })

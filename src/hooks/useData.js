@@ -18,8 +18,22 @@ async function apiFetch(path, options = {}) {
     ...options,
   })
   const data = await res.json().catch(() => ({ error: 'No response body' }))
-  if (!res.ok) throw new Error(data.error || `API error ${res.status}`)
+  if (!res.ok) {
+    const err = Object.assign(
+      new Error(data.error || `API error ${res.status}`),
+      { status: res.status }
+    )
+    throw err
+  }
   return data
+}
+
+// Returns true if React Query should NOT retry this error
+function isNonRetryable(err) {
+  // 503 = backend not ready (Firebase Admin not initialized)
+  // 404 = resource genuinely missing
+  // 409 = conflict (duplicate)
+  return err?.status === 503 || err?.status === 404 || err?.status === 409
 }
 
 // ── Debounce (for realtime polling) ──────────────────────────
@@ -48,6 +62,7 @@ export function useCandidates() {
   return useQuery({
     queryKey: ['candidates'],
     queryFn:  () => apiFetch('/api/candidates'),
+    retry:    (count, err) => !isNonRetryable(err) && count < 2,
   })
 }
 
@@ -259,6 +274,7 @@ export function useAlerts() {
   return useQuery({
     queryKey: ['alerts'],
     queryFn:  () => apiFetch('/api/alerts'),
+    retry:    (count, err) => !isNonRetryable(err) && count < 2,
   })
 }
 
@@ -334,14 +350,36 @@ export function useAddPolicyMessage() {
 export function useRealtimeSync() {
   const queryClient = useQueryClient()
   useEffect(() => {
-    const interval = setInterval(() => {
+    let consecutiveFailures = 0
+
+    const poll = async () => {
+      // Check backend health before invalidating — avoids flicker on 503
+      try {
+        const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+        const endpoint = base ? `${base}/api/health` : '/api/health'
+        const res = await fetch(endpoint, { signal: AbortSignal.timeout(3000) })
+        if (!res.ok) {
+          consecutiveFailures++
+          console.warn(`[realtime] Backend unhealthy (${res.status}) — skipping invalidation`)
+          return
+        }
+        consecutiveFailures = 0
+      } catch {
+        consecutiveFailures++
+        // Backend unreachable — skip silently (no error toast, no flicker)
+        return
+      }
+
       debounce('poll', () => {
         queryClient.invalidateQueries({ queryKey: ['candidates'] })
         queryClient.invalidateQueries({ queryKey: ['alerts'] })
       })
-    }, 10000)  // poll every 10 seconds
+    }
 
-    console.log('[realtime] Polling mode active (10s interval)')
+    // Poll every 30s (was 10s) — only after health check passes
+    const interval = setInterval(poll, 30000)
+    console.log('[realtime] Polling mode active (30s, health-gated)')
+
     return () => {
       clearInterval(interval)
       Object.keys(_timers).forEach(k => { clearTimeout(_timers[k]); delete _timers[k] })

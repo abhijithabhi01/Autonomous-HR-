@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
-  const { login, quickLogin, loading } = useAuth()
+  const { login, loading } = useAuth()
   const navigate = useNavigate()
 
   const [email,    setEmail]    = useState('')
@@ -38,15 +38,7 @@ export default function LoginPage() {
     }
   }
 
-  const handleQuick = async (role) => {
-    try {
-      const user = await quickLogin(role)
-      toast.success('Welcome, ' + user.name.split(' ')[0] + '!')
-      go(user)
-    } catch (err) {
-      toast.error(err.message || 'Demo login failed')
-    }
-  }
+  
 
   return (
     <div className="min-h-screen bg-[#050E10] flex items-center justify-center p-4 relative overflow-hidden">

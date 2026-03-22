@@ -5,8 +5,23 @@ import StatusBadge from '../../components/shared/StatusBadge'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useCandidate, useEmployee, useDocuments, useChecklist, useUploadDocument } from '../../hooks/useData'
-import { verifyDocument } from '../../lib/ai'
 import toast from 'react-hot-toast'
+
+// Calls backend /api/documents/verify
+async function verifyViaBackend(base64, mimeType, documentType) {
+  const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+  const endpoint = base ? `${base}/api/documents/verify` : '/api/documents/verify'
+  const res = await fetch(endpoint, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ base64, mimeType, documentType }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Verification failed (${res.status})`)
+  }
+  return res.json()
+}
 
 const DOC_STATUS_ICON = { verified: '✅', uploaded: '📤', pending: '⏳', failed: '❌', flagged: '⚠️' }
 
@@ -115,7 +130,7 @@ function DocumentUploadModal({ candidateId, existingTypes = [], onClose }) {
     setAnalyzeError(null)
     try {
       const base64   = await fileToBase64(file)
-      const result   = await verifyDocument(base64, file.type, docType)
+      const result   = await verifyViaBackend(base64, file.type, docType)
       setExtracted(result)
       // Pre-populate editable fields
       const initial  = {}

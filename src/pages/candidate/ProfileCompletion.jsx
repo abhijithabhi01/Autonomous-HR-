@@ -5,10 +5,9 @@ import { useCompleteChecklistByTitle } from '../../hooks/useData'   // ← was c
 import toast from 'react-hot-toast'
 
 // Firebase imports that were missing
-import { db, storage }                             from '../../lib/firebase'
+import { db }                                      from '../../lib/firebase'
 import { doc, getDoc, getDocs, collection,
          query, where, updateDoc }                 from 'firebase/firestore'
-import { ref, uploadBytes, getDownloadURL }        from 'firebase/storage'
 
 export default function ProfileCompletion() {
   const navigate        = useNavigate()
@@ -80,11 +79,26 @@ export default function ProfileCompletion() {
       reader.onload = (ev) => setPhotoPreview(ev.target.result)
       reader.readAsDataURL(file)
 
-      const fileExt = file.name.split('.').pop()
-      const fileName = Date.now() + '-' + Math.random().toString(36).substring(7) + '.' + fileExt
-      const fileRef  = ref(storage, 'profile-photos/' + fileName)
-      await uploadBytes(fileRef, file)
-      const publicUrl = await getDownloadURL(fileRef)
+      // Upload via backend — keeps Firebase Storage creds server-side
+      const base64 = await new Promise((resolve, reject) => {
+        const r = new FileReader()
+        r.onload  = e => resolve(e.target.result.split(',')[1])
+        r.onerror = () => reject(new Error('Failed to read file'))
+        r.readAsDataURL(file)
+      })
+      const base = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+      const uploadRes = await fetch(base ? `${base}/api/documents/upload` : '/api/documents/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          candidateId: user?.candidate_id || 'profile',
+          docType: 'profile_photo',
+          base64, mimeType: file.type, fileName: file.name,
+        }),
+      })
+      const uploadData = await uploadRes.json()
+      if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed')
+      const publicUrl = uploadData.download_url
       setForm(f => ({ ...f, profile_photo_url: publicUrl }))
       toast.success('Photo uploaded!')
     } catch (err) {

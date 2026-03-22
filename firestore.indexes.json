@@ -1,20 +1,21 @@
 {
   "indexes": [
     {
-      "collectionGroup": "candidates",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "graduated_at", "order": "ASCENDING" },
-        { "fieldPath": "created_at",   "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "alerts",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "resolved",   "order": "ASCENDING" },
-        { "fieldPath": "severity",   "order": "DESCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        {
+          "fieldPath": "resolved",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "severity",
+          "order": "DESCENDING"
+        },
+        {
+          "fieldPath": "created_at",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],

@@ -2,11 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // Vite dev server proxies all /api/* requests to the local Express backend.
-// Start the backend first: cd backend && node server.js
+// Start the backend first: cd ../HR-Autonomous-Backend && npm run dev
 // Then in a second terminal: npm run dev
 //
-// In production (Firebase Hosting) the rewrites in firebase.json
-// handle /api/* routing to Cloud Functions — no proxy needed there.
+// In production (Vercel) VITE_BACKEND_URL points to Render backend —
+// useData.js and ai.js use it to call the API directly (no proxy needed).
 
 export default defineConfig({
   plugins: [react()],
@@ -15,7 +15,6 @@ export default defineConfig({
       '/api': {
         target:       'http://localhost:3001',
         changeOrigin: true,
-        // No rewrite needed — backend routes match /api/sendmail etc. exactly
       },
     },
   },
