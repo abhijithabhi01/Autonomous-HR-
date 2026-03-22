@@ -5,7 +5,7 @@ import StatusBadge from '../../components/shared/StatusBadge'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useAuth } from '../../hooks/useAuth'
 import { useDocuments, useUploadDocument, useCompleteChecklistByTitle } from '../../hooks/useData'
-import { verifyDocument } from '../../lib/ai'
+import { verifyDocumentViaBackend } from '../../lib/ai'
 
 // ── Document type config ──────────────────────────────────────
 const DOC_TYPES = [
@@ -130,7 +130,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
 
     try {
       const base64 = await readFileAsBase64(file)
-      const result = await verifyDocument(base64, file.type, docType.type)
+      const result = await verifyDocumentViaBackend(base64, file.type, docType.type)
       setExtracted(result)
       // Seed editable fields from AI result (may be empty if PDF or AI failed)
       const init = {}
@@ -159,7 +159,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
     setPhase('analyzing')
     try {
       const base64 = await readFileAsBase64(pendingFile)
-      const result = await verifyDocument(base64, pendingFile.type, docType.type)
+      const result = await verifyDocumentViaBackend(base64, pendingFile.type, docType.type)
       setExtracted(result)
       const init = {}
       docType.fields.forEach(f => { init[f.key] = result[f.key] ?? '' })

@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-  // import { useCompleteChecklistByTitle } from '../../hooks/useData'
+import { useCompleteChecklistByTitle } from '../../hooks/useData'
+import { db } from '../../lib/firebase'
+import { doc, getDoc, updateDoc } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 
 export default function TermsAndConditions() {

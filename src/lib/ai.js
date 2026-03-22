@@ -188,3 +188,38 @@ export function localPolicySearch(question, policyContext) {
 }
 
 export { callAI as callGemini, callAIVision as callGeminiVision }
+
+// ============================================================
+// DOCUMENT AI — via backend (uses Google Document AI service account)
+// ============================================================
+// Routes through backend/server.js /api/verify-document
+// which uses the Document AI service account — no API key
+// needed in the frontend, works for PDFs and images alike.
+// Falls back to Gemini Vision if backend is unavailable.
+// ─────────────────────────────────────────────────────────────
+export async function verifyDocumentViaBackend(base64, mimeType, documentType) {
+  const base     = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+  const endpoint = base ? `${base}/api/verify-document` : '/api/verify-document'
+
+  try {
+    const res = await fetch(endpoint, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ base64, mimeType, documentType }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.error || `Backend returned ${res.status}`)
+    }
+
+    const data = await res.json()
+    console.log('[verifyDocument] Backend result:', data)
+    return data
+
+  } catch (err) {
+    console.warn('[verifyDocument] Backend failed, trying Gemini fallback:', err.message)
+    // Fallback to direct Gemini Vision if backend unavailable
+    return verifyDocument(base64, mimeType, documentType)
+  }
+}
