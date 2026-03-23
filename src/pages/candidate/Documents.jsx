@@ -198,9 +198,11 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
         file:    pendingFile,
         extractedData: finalData,
       })
+      toast.success(`${docType.label} saved successfully! ✓`)
       setPhase('idle')
       setPendingFile(null)
       setExtracted(null)
+      setEditedData({})
       setPreview(null)
     } catch (err) {
       toast.error(err.message || 'Upload failed')
@@ -279,7 +281,11 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
             )}
           </div>
         </div>
-        <StatusBadge status={phase === 'review' ? 'uploaded' : status} />
+        <StatusBadge status={
+          phase === 'review' || phase === 'analyzing' || phase === 'saving'
+            ? 'uploaded'
+            : status
+        } />
       </div>
 
       <div className="p-4 sm:p-5">
@@ -389,7 +395,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
                         value={editedData[f.key] ?? ''}
                         onChange={e => setEditedData(d => ({ ...d, [f.key]: e.target.value }))}
                         className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-3 py-2 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/40 transition-all"
-                        placeholder={extracted[f.key] ? '' : 'Not detected'}
+                        placeholder={extracted?.[f.key] ? '' : 'Not detected'}
                       />
                     </div>
                   ))}
