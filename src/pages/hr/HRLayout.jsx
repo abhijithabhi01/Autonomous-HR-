@@ -9,6 +9,7 @@ const NAV = [
   { to: '/hr/employees',   label: 'Employees',  icon: '◉' },
   { to: '/hr/candidates',  label: 'Candidates', icon: '◈', candidateBadge: true },
   { to: '/hr/alerts',      label: 'Alerts',     icon: '◎', badge: true },
+  { to: '/hr/setup',       label: 'Admin Setup', icon: '⚙️' },
 ]
 
 // ── Sign-out confirm modal ────────────────────────────────────

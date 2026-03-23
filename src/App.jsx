@@ -11,6 +11,7 @@ import Employees      from './pages/hr/Employees'
 import EmployeeDetail from './pages/hr/EmployeeDetail'
 import Alerts         from './pages/hr/Alerts'
 import Candidates from './pages/hr/Candidates'
+import AdminSetup from './pages/hr/AdminSetup'
 
 // Employee / candidate onboarding routes
 import EmployeeLayout from './pages/candidate/EmployeeLayout'
@@ -68,9 +69,11 @@ export default function App() {
           <Route path="documents" element={<Documents />} />
           <Route path="checklist" element={<Checklist />} />
           <Route path="policy" element={<PolicyBot />} />
+          <Route path="setup"       element={<AdminSetup />} />
         </Route>
 
         {/* ── IT Admin Portal ──────────────────────────── */}
+        
         <Route path="/it" element={
           <ProtectedRoute role="it_admin"><ITLayout /></ProtectedRoute>
         }>

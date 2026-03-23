@@ -197,7 +197,7 @@ export function useUploadDocument() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['documents', data.candidate_id] })
-      queryClient.invalidateQueries({ queryKey: ['documents'] })
+      toast.success('Document uploaded successfully')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -396,4 +396,37 @@ export function useRealtimeSync({ pausePolling = false } = {}) {
       Object.keys(_timers).forEach(k => { clearTimeout(_timers[k]); delete _timers[k] })
     }
   }, [queryClient])
+}
+
+// ── Checklist cleanup (removes stale items like Team Introduction, Day 7 Check-in) ──
+export function useCleanupChecklistTitles() {
+  return useMutation({
+    mutationFn: (titles) => apiFetch('/api/checklist/cleanup-titles', {
+      method: 'DELETE',
+      body:   JSON.stringify({ titles }),
+    }),
+    onSuccess: (data) => {
+      if (data.deleted > 0) console.log(`[cleanup] Removed ${data.deleted} stale checklist items`)
+    },
+    onError: (err) => console.warn('[cleanup] Checklist cleanup failed:', err.message),
+  })
+}
+
+// ── Admin account creation ────────────────────────────────────
+export function useCreateITAdmin() {
+  return useMutation({
+    mutationFn: ({ name, email, password }) => apiFetch('/api/auth/create-it-admin', {
+      method: 'POST',
+      body:   JSON.stringify({ name, email, password }),
+    }),
+  })
+}
+
+export function useCreateHRAdmin() {
+  return useMutation({
+    mutationFn: ({ name, email, password }) => apiFetch('/api/auth/create-hr-admin', {
+      method: 'POST',
+      body:   JSON.stringify({ name, email, password }),
+    }),
+  })
 }

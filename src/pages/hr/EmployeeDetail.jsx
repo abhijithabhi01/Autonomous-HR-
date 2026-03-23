@@ -4,7 +4,7 @@ import Avatar from '../../components/shared/Avatar'
 import StatusBadge from '../../components/shared/StatusBadge'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
-import { useCandidate, useEmployee, useDocuments, useChecklist, useUploadDocument } from '../../hooks/useData'
+import { useCandidate, useEmployee, useDocuments, useChecklist, useUploadDocument, useCompleteChecklistByTitle } from '../../hooks/useData'
 import toast from 'react-hot-toast'
 
 // Calls backend /api/documents/verify
@@ -447,7 +447,25 @@ export default function EmployeeDetail() {
   const { data: docs  = [], isLoading: docsLoading  } = useDocuments(candidateId)
   const { data: items = [], isLoading: checkLoading } = useChecklist(candidateId)
 
-  const [showUpload, setShowUpload] = useState(false)
+  const [showUpload,  setShowUpload]  = useState(false)
+  const [hrActPending, setHrActPending] = useState({})
+  const completeByTitle = useCompleteChecklistByTitle()
+
+  const hrConfirm = async (title, description, category, sort_order) => {
+    if (!candidateId) return
+    setHrActPending(p => ({ ...p, [title]: true }))
+    try {
+      await new Promise((res, rej) => completeByTitle.mutate(
+        { candidateId, title, description, category, sort_order },
+        { onSuccess: res, onError: rej }
+      ))
+      toast.success(`✅ "${title}" marked complete`)
+    } catch {
+      toast.error('Failed to update — try again')
+    } finally {
+      setHrActPending(p => ({ ...p, [title]: false }))
+    }
+  }
 
   const backTo    = isCandidate ? '/hr/candidates' : '/hr/employees'
   const backLabel = isCandidate ? '← Back to Candidates' : '← Back to Employees'
@@ -648,6 +666,54 @@ export default function EmployeeDetail() {
               )}
         </div>
       </div>
+
+      {/* HR Actions — only shown for candidates */}
+      {isCandidate && candidateId && (
+        <div className="mt-5 rounded-2xl border border-white/[0.05] bg-[#0C1A1D] overflow-hidden animate-slide-up opacity-0"
+          style={{ animationDelay: '240ms', animationFillMode: 'forwards' }}>
+          <div className="px-4 sm:px-5 py-4 border-b border-white/[0.05]">
+            <h2 className="font-display font-semibold text-white text-sm">HR Actions</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Manually confirm HR-managed checklist items</p>
+          </div>
+          <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {[
+              { title: 'Payroll Setup',         desc: 'Salary account and payroll configured',      icon: '💰', cat: 'hr',       order: 6, color: 'emerald' },
+              { title: 'System Access Granted', desc: 'Access to required tools and platforms',     icon: '🔑', cat: 'it',       order: 5, color: 'teal' },
+            ].map(({ title, desc, icon, cat, order, color }) => {
+              const isDone    = items.some(i => i.title === title && i.completed)
+              const isPending = hrActPending[title]
+              return (
+                <button
+                  key={title}
+                  onClick={() => hrConfirm(title, desc, cat, order)}
+                  disabled={isDone || isPending}
+                  className={[
+                    'flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all',
+                    isDone
+                      ? 'bg-emerald-500/[0.05] border-emerald-500/15 cursor-default opacity-70'
+                      : `bg-white/[0.02] border-white/[0.07] hover:border-${color}-500/30 hover:bg-${color}-500/[0.04] cursor-pointer`,
+                  ].join(' ')}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-lg flex-shrink-0
+                    ${isDone ? 'bg-emerald-500/15 border border-emerald-500/25' : 'bg-white/[0.05] border border-white/10'}`}>
+                    {isPending
+                      ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : isDone ? '✅' : icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold ${isDone ? 'text-emerald-300 line-through opacity-70' : 'text-slate-200'}`}>
+                      {title}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">{isDone ? 'Already confirmed' : desc}</p>
+                  </div>
+                  {!isDone && !isPending && (
+                    <span className="text-xs text-slate-600 flex-shrink-0">Confirm →</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Upload modal */}
       {showUpload && candidateId && (
