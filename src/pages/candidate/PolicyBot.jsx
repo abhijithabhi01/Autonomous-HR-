@@ -1,47 +1,14 @@
+// src/pages/candidate/PolicyBot.jsx
+// All Gemini calls go through /api/policy/chat on the backend,
+// which uses Vertex AI with the service account credentials.
+// No VITE_GEMINI_API_KEY needed in the frontend.
+
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCreatePolicySession, useAddPolicyMessage } from '../../hooks/useData'
 
-const POLICY_CONTEXT = `
-LEAVE POLICY:
-- Annual Leave: 21 days per calendar year (accrues 1.75 days/month)
-- Sick Leave: 10 days per year (medical certificate required after 2 consecutive days)
-- Maternity Leave: 90 days paid
-- Paternity Leave: 5 days paid
-- Emergency Leave: 3 days per year
-- Annual leave requires manager approval at least 2 weeks in advance
-
-REMOTE WORK POLICY:
-- Eligible roles may work remotely up to 2 days per week
-- Core hours: 10 AM - 4 PM local timezone (must be online and reachable)
-- Requires manager approval
-- Remote work is NOT available during probation (first 3 months)
-
-TRAVEL AND EXPENSES POLICY:
-- International travel requires department head pre-approval
-- Expense claims must be submitted within 30 days of travel
-- Receipts required for any expense above AED 50
-- Flights under 5 hours: economy class
-- Flights over 5 hours: business class permitted
-
-IT AND EQUIPMENT POLICY:
-- Company laptop issued on Day 1
-- Personal devices need IT registration for VPN access
-- Software requests via IT helpdesk: it@company.com
-- No company data on personal cloud services
-
-PROBATION POLICY:
-- 3-month probation period for all new hires
-- Performance review at end of probation
-- Notice period during probation: 1 week
-- Notice period after probation: 1 month (staff), 3 months (management)
-
-SALARY AND PAYROLL:
-- Salary paid on the last working day of each month
-- Overtime requires pre-approval from manager
-- Annual increment review: January each year
-- Performance bonus review: December each year
-`
+const BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+const api  = (path) => BASE ? `${BASE}${path}` : path
 
 const SUGGESTIONS = [
   'How many annual leaves do I get?',
@@ -52,57 +19,7 @@ const SUGGESTIONS = [
   'Can I work from home during probation?',
 ]
 
-// ── Direct Gemini 2.5 Flash call ──────────────────────────────
-async function askGemini(question, history) {
-  const key = import.meta.env.VITE_GEMINI_API_KEY
-  if (!key) throw new Error('VITE_GEMINI_API_KEY not set in frontend .env')
-
-  const systemPrompt =
-    'You are a helpful HR Policy Assistant for D Company. ' +
-    'Answer questions using ONLY the company policy below. ' +
-    'Be concise, friendly, and direct. If a topic is not covered in the policy, say so clearly and suggest contacting HR at hr@dcompany.com.\n\n' +
-    'COMPANY POLICY:\n' + POLICY_CONTEXT
-
-  // Build conversation history for multi-turn context
-  const contents = [
-    { role: 'user', parts: [{ text: systemPrompt + '\n\nUser question: ' + question }] },
-  ]
-
-  // Add previous turns for context (last 6 messages)
-  if (history.length > 1) {
-    const recent = history.slice(-6)
-    contents[0].parts[0].text = systemPrompt
-    recent.forEach(msg => {
-      if (msg.id === 'init') return
-      contents.push({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.content }],
-      })
-    })
-    contents.push({ role: 'user', parts: [{ text: question }] })
-  }
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${key}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
-      }),
-    }
-  )
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error?.message || `Gemini ${res.status}`)
-  }
-
-  const data = await res.json()
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.'
-}
-
+// ── Message component ─────────────────────────────────────────
 function Message({ msg }) {
   const isUser = msg.role === 'user'
   return (
@@ -122,7 +39,7 @@ function Message({ msg }) {
         {!isUser && msg.model && (
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.03] border border-white/[0.05]">
             <span className="text-[10px]">✨</span>
-            <span className="text-[10px] text-slate-500">Gemini 2.5 Flash</span>
+            <span className="text-[10px] text-slate-500">Gemini 2.5 Flash · Vertex AI</span>
           </div>
         )}
       </div>
@@ -135,6 +52,7 @@ function Message({ msg }) {
   )
 }
 
+// ── Main component ────────────────────────────────────────────
 export default function PolicyBot() {
   const { user }      = useAuth()
   const createSession = useCreatePolicySession()
@@ -164,11 +82,23 @@ export default function PolicyBot() {
     setMessages(prev => [...prev, userMsg])
 
     let answer = ''
-    try {
-      answer = await askGemini(question, [...messages, userMsg])
+try {
+      // All AI work happens on the backend
+      const res  = await fetch(api('/api/policy/chat'), {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ question, history: messages }),
+      })
+      
+      // Safely parse the response to prevent the "Unexpected end of JSON" crash
+      const text = await res.text()
+      const data = text ? JSON.parse(text) : { error: 'Backend server is unreachable or crashed.' }
+      
+      if (!res.ok) throw new Error(data.error || `Server error ${res.status}`)
+      answer = data.answer
     } catch (err) {
-      console.warn('[PolicyBot] Gemini failed:', err.message)
-      answer = "I'm having trouble connecting right now. Please try again in a moment or contact HR at hr@dcompany.com."
+      console.warn('[PolicyBot] chat failed:', err.message)
+      answer = "I'm having trouble connecting to the HR server right now. Please ensure the backend is running or contact IT."
     }
 
     setMessages(prev => [...prev, {
@@ -187,7 +117,7 @@ export default function PolicyBot() {
       }
       if (sessionRef.current) {
         await addMessage.mutateAsync({ sessionId: sessionRef.current, role: 'user', content: question })
-        await addMessage.mutateAsync({ sessionId: sessionRef.current, role: 'bot', content: answer })
+        await addMessage.mutateAsync({ sessionId: sessionRef.current, role: 'bot',  content: answer })
       }
     } catch (err) {
       console.warn('[PolicyBot] Logging non-fatal:', err.message)
@@ -196,12 +126,13 @@ export default function PolicyBot() {
 
   return (
     <div className="flex flex-col h-screen p-4 sm:p-8 max-w-3xl mx-auto">
+
       {/* Header */}
-      <div className="mb-6 flex-shrink-0">
+      <div className="mb-4 flex-shrink-0">
         <h1 className="text-2xl font-display font-bold text-white">HR Policy Bot</h1>
         <div className="flex items-center gap-2 mt-1">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <p className="text-slate-500 text-sm">Powered by Gemini 2.5 Flash</p>
+          <p className="text-slate-500 text-sm">Powered by Gemini 2.5 Flash · Vertex AI</p>
         </div>
       </div>
 
@@ -248,12 +179,14 @@ export default function PolicyBot() {
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
           placeholder="Ask any HR policy question…"
           disabled={loading}
-          className="flex-1 bg-[#0D1120] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/40 transition-all disabled:opacity-50"
+          className="flex-1 bg-[#0D1120] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-slate-200
+                     placeholder-slate-600 focus:outline-none focus:border-indigo-500/40 transition-all disabled:opacity-50"
         />
         <button
           onClick={() => sendMessage()}
           disabled={loading || !input.trim()}
-          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white w-12 h-12 rounded-xl transition-all flex items-center justify-center disabled:cursor-not-allowed flex-shrink-0"
+          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white w-12 h-12 rounded-xl
+                     transition-all flex items-center justify-center disabled:cursor-not-allowed flex-shrink-0"
           style={{ boxShadow: '0 0 16px rgba(99,102,241,0.25)' }}>
           {loading
             ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

@@ -9,7 +9,6 @@ const NAV = [
   { to: '/hr/employees',   label: 'Employees',  icon: '◉' },
   { to: '/hr/candidates',  label: 'Candidates', icon: '◈', candidateBadge: true },
   { to: '/hr/alerts',      label: 'Alerts',     icon: '◎', badge: true },
-  { to: '/hr/setup',       label: 'Admin Setup', icon: '⚙️' },
 ]
 
 // ── Sign-out confirm modal ────────────────────────────────────
@@ -20,7 +19,6 @@ function SignOutModal({ user, onConfirm, onCancel, loading }) {
         className="bg-[#0D1120] border border-white/[0.08] rounded-2xl w-full max-w-sm shadow-2xl"
         style={{ animation: 'slideUp 0.2s ease-out both' }}>
         <div className="p-6 text-center">
-          {/* Avatar */}
           <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center mx-auto mb-4">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#818CF8" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -66,7 +64,6 @@ function SidebarContent({ user, alertCount, candidateCount, onSignOutClick, onCl
             </svg>
           </div>
           <div>
-           
             <p className="text-xs text-slate-600 mt-0.5">HR Platform</p>
           </div>
         </div>
@@ -113,7 +110,6 @@ function SidebarContent({ user, alertCount, candidateCount, onSignOutClick, onCl
             <p className="text-sm font-semibold text-slate-300 truncate leading-none">{user?.name || 'HR Manager'}</p>
             <p className="text-xs text-slate-600 mt-0.5">HR Manager</p>
           </div>
-          {/* Sign-out button — opens confirm modal */}
           <button
             onClick={onSignOutClick}
             className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
@@ -138,8 +134,6 @@ export default function HRLayout() {
   const [signOutOpen, setSignOutOpen]     = useState(false)
   const [signingOut, setSigningOut]       = useState(false)
 
-  // Listen for modal-open events dispatched by any child page
-  // so polling can be paused while a form is open.
   const [modalOpen, setModalOpen] = useState(false)
   useEffect(() => {
     const handler = (e) => setModalOpen(e.detail?.open ?? false)
@@ -147,12 +141,11 @@ export default function HRLayout() {
     return () => window.removeEventListener('hr:modal', handler)
   }, [])
 
-  // Live sync — paused when any modal is open to prevent mid-form re-renders
   useRealtimeSync({ pausePolling: modalOpen || signOutOpen })
 
-  const { data: alerts = [] }             = useAlerts()
+  const { data: alerts = [] }     = useAlerts()
   const { data: candidates = [] } = useCandidates()
-  const alertCount = alerts.length
+  const alertCount     = alerts.length
   const candidateCount = candidates.length
 
   const handleSignOut = async () => {
@@ -163,13 +156,11 @@ export default function HRLayout() {
 
   return (
     <div className="flex h-screen bg-[#070B15] overflow-hidden">
-      {/* Mobile drawer overlay */}
       {drawerOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 lg:hidden"
           onClick={() => setDrawerOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-40
         w-60 flex-shrink-0 bg-[#0A0E1A] border-r border-white/[0.05]
@@ -185,9 +176,7 @@ export default function HRLayout() {
         />
       </aside>
 
-      {/* Main */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Mobile top bar */}
         <header className="lg:hidden flex items-center gap-3 px-4 py-3 bg-[#0A0E1A] border-b border-white/[0.05] flex-shrink-0">
           <button onClick={() => setDrawerOpen(true)}
             className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-white/[0.05] transition-colors">
@@ -210,7 +199,6 @@ export default function HRLayout() {
         </main>
       </div>
 
-      {/* Sign-out confirmation modal */}
       {signOutOpen && (
         <SignOutModal
           user={user}

@@ -6,6 +6,9 @@ import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useCandidates, useAddCandidate, useDeleteCandidate } from '../../hooks/useData'
 import toast from 'react-hot-toast'
+import DatePicker from "react-datepicker"
+import "react-datepicker/dist/react-datepicker.css"
+
 
 const FILTERS = ['All', 'Pre-Joining', 'Onboarding']
 const DEPARTMENTS = ['Engineering', 'Product', 'Design', 'Marketing', 'Finance', 'HR', 'Operations', 'Sales', 'Legal']
@@ -26,7 +29,7 @@ const EMPTY_FORM = {
   department: 'Engineering',
   manager: '',
   location: '',
-  start_date: nextValidDate(),   // default = tomorrow, never today
+   start_date: new Date(),   // default = tomorrow, never today
 }
 
 // Field supports extra HTML input props (e.g. min, max) via ...rest
@@ -74,7 +77,7 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
     if (!form.start_date) {
       e.start_date = 'Last date is required'
     } else {
-      const selected = new Date(form.start_date)
+      const selected = form.start_date
       const today = new Date()
 
       // normalize time
@@ -139,10 +142,44 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
               </select>
             </div>
 
-            {/* min={tomorrowStr()} prevents browser calendar from showing past/today */}
-            <Field label="Start Date" name="start_date" type="date" required
-              min={nextValidDate()}
-              value={form.start_date} onChange={set} error={errors.start_date} />
+          <div className="col-span-1">
+  <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+    Last Date *
+  </label>
+
+  <DatePicker
+    selected={form.start_date}
+    onChange={(date) => set('start_date', date)}
+
+    minDate={new Date()}
+
+    filterDate={(date) => {
+      const day = date.getDay()
+      const today = new Date()
+      today.setHours(0,0,0,0)
+
+      return (
+        date > today &&
+        day !== 0 &&
+        day !== 6
+      )
+    }}
+
+    dayClassName={(date) => {
+      const day = date.getDay()
+      if (day === 0 || day === 6) return "text-red-500"
+      return ""
+    }}
+
+    dateFormat="dd/MM/yyyy"
+
+    placeholderText="Select start date"
+
+    className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-indigo-500/50"
+
+    popperPlacement="bottom-start"
+  />
+</div>
 
             <Field label="Manager" name="manager"
               value={form.manager} onChange={set} error={errors.manager} />
@@ -274,7 +311,7 @@ export default function Candidates() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          
+
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all"
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>
@@ -291,7 +328,7 @@ export default function Candidates() {
             placeholder="Search candidates…"
             className="w-full bg-[#0D1120] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/40 transition-all" />
         </div>
-      
+
       </div>
 
       {/* Empty state */}

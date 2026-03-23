@@ -10,21 +10,22 @@ import Dashboard      from './pages/hr/Dashboard'
 import Employees      from './pages/hr/Employees'
 import EmployeeDetail from './pages/hr/EmployeeDetail'
 import Alerts         from './pages/hr/Alerts'
-import Candidates from './pages/hr/Candidates'
-import AdminSetup from './pages/hr/AdminSetup'
+import Candidates     from './pages/hr/Candidates'
 
 // Employee / candidate onboarding routes
-import EmployeeLayout from './pages/candidate/EmployeeLayout'
-import Welcome        from './pages/candidate/Welcome'
-import ProfileCompletion from './pages/candidate/ProfileCompletion'
+import EmployeeLayout     from './pages/candidate/EmployeeLayout'
+import Welcome            from './pages/candidate/Welcome'
+import ProfileCompletion  from './pages/candidate/ProfileCompletion'
 import TermsAndConditions from './pages/candidate/TermsAndConditions'
-import Documents      from './pages/candidate/Documents'
-import Checklist      from './pages/candidate/Checklist'
-import PolicyBot      from './pages/candidate/PolicyBot'
+import Documents          from './pages/candidate/Documents'
+import Checklist          from './pages/candidate/Checklist'
+import PolicyBot          from './pages/candidate/PolicyBot'
 
 // IT Admin routes
-import ITLayout       from './pages/it/ITLayout'
-import Provisioning   from './pages/it/Provisioning'
+import ITLayout      from './pages/it/ITLayout'
+import Provisioning  from './pages/it/Provisioning'
+import AdminSetup    from './pages/it/AdminSetup'
+import PolicyConfig  from './pages/it/PolicyConfig'
 
 export default function App() {
   return (
@@ -52,11 +53,11 @@ export default function App() {
           <ProtectedRoute role="hr"><HRLayout /></ProtectedRoute>
         }>
           <Route index element={<Dashboard />} />
-          <Route path="employees" element={<Employees />} />
-          <Route path="candidates" element={<Candidates />} />
-          <Route path="employees/:id" element={<EmployeeDetail />} />
+          <Route path="employees"      element={<Employees />} />
+          <Route path="candidates"     element={<Candidates />} />
+          <Route path="employees/:id"  element={<EmployeeDetail />} />
           <Route path="candidates/:id" element={<EmployeeDetail />} />
-          <Route path="alerts" element={<Alerts />} />
+          <Route path="alerts"         element={<Alerts />} />
         </Route>
 
         {/* ── Candidate Onboarding Portal ──────────────── */}
@@ -64,23 +65,21 @@ export default function App() {
           <ProtectedRoute role="employee"><EmployeeLayout /></ProtectedRoute>
         }>
           <Route index element={<Welcome />} />
-          <Route path="profile" element={<ProfileCompletion />} />
-          <Route path="terms" element={<TermsAndConditions />} />
-          <Route path="documents" element={<Documents />} />
-          <Route path="checklist" element={<Checklist />} />
-          <Route path="policy" element={<PolicyBot />} />
-          <Route path="setup"       element={<AdminSetup />} />
+          <Route path="profile"    element={<ProfileCompletion />} />
+          <Route path="terms"      element={<TermsAndConditions />} />
+          <Route path="documents"  element={<Documents />} />
+          <Route path="checklist"  element={<Checklist />} />
+          <Route path="policy"     element={<PolicyBot />} />
         </Route>
 
         {/* ── IT Admin Portal ──────────────────────────── */}
-        
         <Route path="/it" element={
           <ProtectedRoute role="it_admin"><ITLayout /></ProtectedRoute>
         }>
-          {/* Pending + In-Progress provisioning requests */}
-          <Route index element={<Provisioning showCompleted={false} />} />
-          {/* Completed provisioning history */}
-          <Route path="completed" element={<Provisioning showCompleted={true} />} />
+          <Route index                  element={<Provisioning showCompleted={false} />} />
+          <Route path="completed"       element={<Provisioning showCompleted={true} />} />
+          <Route path="setup"           element={<AdminSetup />} />
+          <Route path="policy-config"   element={<PolicyConfig />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />

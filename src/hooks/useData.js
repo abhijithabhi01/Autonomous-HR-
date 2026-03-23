@@ -13,19 +13,23 @@ const BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
 const api  = (path) => BASE ? `${BASE}${path}` : path
 
 async function apiFetch(path, options = {}) {
-  const res  = await fetch(api(path), {
+  const res = await fetch(api(path), {
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
-  })
-  const data = await res.json().catch(() => ({ error: 'No response body' }))
+  });
+  
+  // Only try to parse if there is content in the response
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : { error: 'Empty response from server' };
+  
   if (!res.ok) {
     const err = Object.assign(
       new Error(data.error || `API error ${res.status}`),
       { status: res.status }
-    )
-    throw err
+    );
+    throw err;
   }
-  return data
+  return data;
 }
 
 // Returns true if React Query should NOT retry this error

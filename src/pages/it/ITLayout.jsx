@@ -4,8 +4,10 @@ import { useAuth } from '../../hooks/useAuth'
 import { useProvisioningRequests, useCleanupChecklistTitles } from '../../hooks/useData'
 
 const NAV = [
-  { to: '/it',              label: 'Provisioning', icon: '🖥️', exact: true },
-  { to: '/it/completed',    label: 'Completed',    icon: '✅' },
+  { to: '/it',               label: 'Provisioning',  icon: '🖥️', exact: true },
+  { to: '/it/completed',     label: 'Completed',     icon: '✅' },
+  { to: '/it/setup',         label: 'Admin Setup',   icon: '⚙️' },
+  { to: '/it/policy-config', label: 'Policy Bot',    icon: '🤖' },
 ]
 
 function SignOutModal({ user, onConfirm, onCancel, loading }) {
@@ -50,7 +52,6 @@ export default function ITLayout() {
   const pendingCount = requests.filter(r => r.status === 'pending').length
   const cleanup = useCleanupChecklistTitles()
 
-  // On first mount, purge stale Team Introduction + Day 7 items from all existing candidates
   useEffect(() => {
     cleanup.mutate(['Team Introduction', 'Day 7 Check-in', 'Wellbeing Check-in'])
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -67,7 +68,6 @@ export default function ITLayout() {
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-30 lg:hidden" onClick={() => setDrawerOpen(false)} />
       )}
 
-      {/* Sidebar */}
       <aside className={`
         fixed lg:static inset-y-0 left-0 z-40 w-60 flex-shrink-0 flex flex-col
         bg-[#0A0E1A] border-r border-white/[0.05]
