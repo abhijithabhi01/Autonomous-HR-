@@ -175,7 +175,9 @@ if (form.emergency_contact_phone?.trim()) {
         profile_completed: true,
       }
       await updateDoc(doc(db, 'candidates', candidateId), updateData)
-      toast.success('Profile completed!')
+      toast.success('Profile saved!')
+
+      // 1. Mark Profile Completed in checklist
       completeByTitle.mutate({
         candidateId,
         title: 'Profile Completed',
@@ -183,6 +185,47 @@ if (form.emergency_contact_phone?.trim()) {
         category: 'hr',
         sort_order: 0,
       })
+
+      // 2. Generate ID card HTML and send by email (non-blocking)
+      ;(async () => {
+        try {
+          const snap  = await getDoc(doc(db, 'candidates', candidateId))
+          const cData = snap.exists() ? snap.data() : {}
+          const base  = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+          const idRes = await fetch(`${base}/api/sendmail/idcard`, {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              toEmail:    cData.personal_email || cData.login_email,
+              toName:     form.full_name || cData.full_name,
+              candidateId,
+              position:   cData.position   || '',
+              department: cData.department || '',
+              workEmail:  cData.work_email || '',
+              employeeId: candidateId.slice(-6).toUpperCase(),
+              photoUrl:   form.profile_photo_url || cData.profile_photo_url || null,
+              startDate:  cData.start_date || '',
+            }),
+          })
+          if (idRes.ok) {
+            toast.success('ID card sent to your email! 🪪')
+            // Mark ID Card Issued in checklist
+            completeByTitle.mutate({
+              candidateId,
+              title: 'ID Card Issued',
+              description: 'Company ID card generated and sent',
+              category: 'hr',
+              sort_order: 7,
+            })
+          } else {
+            const err = await idRes.json().catch(() => ({}))
+            console.warn('[profile] ID card email failed:', err.error || idRes.status)
+          }
+        } catch (idErr) {
+          console.warn('[profile] ID card generation error:', idErr.message)
+        }
+      })()
+
       navigate('/onboarding/terms')
     } catch (err) {
       console.error('Profile update error:', err)

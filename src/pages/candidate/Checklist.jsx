@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../hooks/useAuth'
-import { useChecklist, useToggleChecklist, useMarkOnboardingComplete } from '../../hooks/useData'
+import { useChecklist, useMarkOnboardingComplete, useCompleteChecklistByTitle } from '../../hooks/useData'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import toast from 'react-hot-toast'
@@ -15,17 +15,117 @@ const CATEGORY_META = {
   wellbeing: { label: 'Wellbeing', icon: '💚', color: 'text-green-400',  bg: 'bg-green-500/10 border-green-500/20' },
 }
 
+// These items are auto-completed by backend — candidates cannot tick them manually
+const SYSTEM_ITEMS = new Set([
+  'Profile Completed',
+  'Contract Signed',
+  'Documents Submitted',
+  'Documents Verified',
+  'Company Email Created',
+  'System Access Granted',
+  'Payroll Setup',
+  'ID Card Issued',
+])
+
+// ── Policy Training Modal ─────────────────────────────────────
+function PolicyTrainingModal({ isCompleted, onClose, onMarkDone }) {
+  const [confirming, setConfirming] = useState(false)
+
+  const handleDone = async () => {
+    setConfirming(true)
+    try { await onMarkDone() } finally { setConfirming(false) }
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div
+        className="bg-[#0D1120] border border-white/[0.08] rounded-2xl w-full max-w-2xl shadow-2xl"
+        style={{ animation: 'slideUp 0.2s ease-out both' }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-white/[0.06]">
+          <div>
+            <h2 className="font-display font-bold text-white text-lg">Policy Training</h2>
+            <p className="text-slate-500 text-xs mt-0.5">Watch the video, then confirm you have understood</p>
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-200 hover:bg-white/[0.05] transition-all text-lg">
+            ✕
+          </button>
+        </div>
+
+        <div className="p-6">
+          {/* YouTube embed */}
+          <div className="relative w-full rounded-xl overflow-hidden bg-black border border-white/[0.06]"
+            style={{ paddingTop: '56.25%' }}>
+            <iframe
+              className="absolute inset-0 w-full h-full"
+              src="https://www.youtube.com/embed/dQw4w9WgXcQ?rel=0&modestbranding=1"
+              title="Company Policy Training"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+
+          {/* Topics */}
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {[
+              { icon: '⚖️', label: 'Code of conduct' },
+              { icon: '🔒', label: 'Data & security policy' },
+              { icon: '🤝', label: 'Workplace behaviour' },
+              { icon: '📋', label: 'Leave & attendance' },
+            ].map(t => (
+              <div key={t.label}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
+                <span className="text-sm">{t.icon}</span>
+                <span className="text-xs text-slate-400">{t.label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Action buttons */}
+          <div className="mt-5 flex gap-3">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-medium text-slate-400 border border-white/[0.08] hover:bg-white/[0.04] hover:text-slate-200 transition-all">
+              Watch later
+            </button>
+            {isCompleted ? (
+              <div className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center gap-2">
+                ✓ Already completed
+              </div>
+            ) : (
+              <button onClick={handleDone} disabled={confirming}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-amber-600 hover:bg-amber-500 transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+                {confirming
+                  ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : '✓ I have watched and understood'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
+    </div>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────────
 export default function Checklist() {
-  const { user } = useAuth()
+  const { user }        = useAuth()
   const { data: items = [], isLoading } = useChecklist(user?.candidate_id)
-  const toggleMutation  = useToggleChecklist()
   const markComplete    = useMarkOnboardingComplete()
+  const completeByTitle = useCompleteChecklistByTitle()
   const markedRef       = useRef(false)
 
-  const completed = items.filter(i => i.completed).length
-  const pct = items.length > 0 ? Math.round((completed / items.length) * 100) : 0
+  const [policyModalOpen, setPolicyModalOpen] = useState(false)
 
-  // Auto-mark onboarding complete the first time pct hits 100
+  const completed = items.filter(i => i.completed).length
+  const pct       = items.length > 0 ? Math.round((completed / items.length) * 100) : 0
+  const policyItem = items.find(i => i.title === 'Policy Training')
+  const policyDone = policyItem?.completed ?? false
+
+  // Auto-mark onboarding complete when all items done
   useEffect(() => {
     if (pct === 100 && !markedRef.current && user?.candidate_id) {
       markedRef.current = true
@@ -33,14 +133,22 @@ export default function Checklist() {
     }
   }, [pct, user?.candidate_id])
 
-  const toggle = (item) => {
-    if (toggleMutation.isPending) return
-    const next = !item.completed
-    toggleMutation.mutate(
-      { id: item.id, completed: next, candidateId: user?.candidate_id },
-      { onSuccess: () => { if (next) toast.success('Task completed! 🎉') } }
-    )
+  const handleItemClick = (item) => {
+    if (item.title === 'Policy Training') {
+      setPolicyModalOpen(true)
+    }
+    // All other items are system-managed — no click action
   }
+
+  const handlePolicyMarkDone = () =>
+    new Promise((resolve) => {
+      completeByTitle.mutate(
+        { candidateId: user.candidate_id, title: 'Policy Training',
+          description: 'Mandatory compliance and policy training', category: 'training', sort_order: 8 },
+        { onSuccess: () => { toast.success('Policy training completed! 🎓'); resolve() },
+          onError:   () => resolve() }
+      )
+    })
 
   const grouped = items.reduce((acc, item) => {
     if (!acc[item.category]) acc[item.category] = []
@@ -58,9 +166,13 @@ export default function Checklist() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl mx-auto">
+
+      {/* Page header */}
       <div className="mb-6 animate-fade-in">
         <h1 className="text-xl sm:text-2xl font-display font-bold text-white">Onboarding Checklist</h1>
-        <p className="text-slate-500 text-sm mt-1">Track and complete your onboarding tasks</p>
+        <p className="text-slate-500 text-sm mt-1">
+          Most tasks complete automatically as you progress — only Policy Training requires your action
+        </p>
       </div>
 
       {/* Progress card */}
@@ -77,9 +189,9 @@ export default function Checklist() {
           </p>
         </div>
         <ProgressBar value={pct} showLabel={false} size="lg" />
+
         {pct === 100 && (
           <div className="mt-5 rounded-2xl border border-teal-500/20 bg-teal-500/5 overflow-hidden">
-            {/* Confetti bar */}
             <div className="h-1.5 w-full bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400" />
             <div className="p-5 text-center">
               <div className="text-4xl mb-2">🎉</div>
@@ -91,10 +203,12 @@ export default function Checklist() {
                 {[
                   { icon: '✅', label: 'Profile saved' },
                   { icon: '✍️', label: 'Contract signed' },
-                  { icon: '📄', label: 'Docs submitted' },
-                  { icon: '🤖', label: 'AI verified' },
+                  { icon: '📄', label: 'Docs verified' },
+                  { icon: '🪪', label: 'ID card issued' },
+                  { icon: '🎓', label: 'Training done' },
                 ].map(b => (
-                  <span key={b.label} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium">
+                  <span key={b.label}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium">
                     {b.icon} {b.label}
                   </span>
                 ))}
@@ -104,6 +218,20 @@ export default function Checklist() {
         )}
       </div>
 
+      {/* Legend */}
+      <div className="flex items-center gap-5 mb-5 px-1">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <div className="w-3 h-3 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
+            <span className="text-emerald-400" style={{ fontSize: 7 }}>✓</span>
+          </div>
+          Auto-completed by system
+        </div>
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <div className="w-3 h-3 rounded-full bg-amber-500/20 border border-amber-500/40" />
+          Requires your action
+        </div>
+      </div>
+
       {items.length === 0 && (
         <div className="text-center py-16 text-slate-500">
           <p className="text-4xl mb-3">📋</p>
@@ -111,6 +239,7 @@ export default function Checklist() {
         </div>
       )}
 
+      {/* Grouped items */}
       <div className="space-y-5 sm:space-y-6">
         {Object.entries(grouped).map(([cat, catItems], gi) => {
           const meta    = CATEGORY_META[cat] || CATEGORY_META.hr
@@ -118,50 +247,97 @@ export default function Checklist() {
           return (
             <div key={cat} className="animate-slide-up opacity-0"
               style={{ animationDelay: `${gi * 80}ms`, animationFillMode: 'forwards' }}>
+
               <div className="flex items-center gap-3 mb-3">
                 <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border uppercase tracking-wider ${meta.bg} ${meta.color}`}>
                   {meta.icon} {meta.label}
                 </span>
                 <span className="text-xs text-slate-600">{catDone}/{catItems.length}</span>
               </div>
+
               <div className="space-y-2">
-                {catItems.map(item => (
-                  <div key={item.id} onClick={() => toggle(item)}
-                    className={`flex items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border cursor-pointer transition-all duration-200 group
-                      ${toggleMutation.isPending ? 'pointer-events-none opacity-70' : ''}
-                      ${item.completed
-                        ? 'bg-white/[0.01] border-white/[0.03] opacity-55'
-                        : 'bg-[#0C1A1D] border-white/[0.05] hover:border-teal-500/20 hover:bg-teal-500/[0.03]'}`}>
-                    <div className={`w-5 h-5 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center border transition-all
-                      ${item.completed
-                        ? 'bg-emerald-500/20 border-emerald-500/40'
-                        : 'bg-white/[0.03] border-white/10 group-hover:border-teal-500/40'}`}>
-                      {item.completed && <span className="text-emerald-400 text-[10px] font-bold">✓</span>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-semibold transition-colors
-                        ${item.completed ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}`}>
-                        {item.title}
-                      </p>
-                      <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>
-                      {item.completed_at && (
-                        <p className="text-[10px] text-teal-700 mt-1">
-                          ✓ Completed {new Date(item.completed_at).toLocaleDateString()}
-                        </p>
+                {catItems.map(item => {
+                  const isPolicy    = item.title === 'Policy Training'
+                  const isClickable = isPolicy && !item.completed
+                  const isSystem    = SYSTEM_ITEMS.has(item.title)
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => isClickable ? handleItemClick(item) : undefined}
+                      className={[
+                        'flex items-start gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border transition-all duration-200 group',
+                        isClickable
+                          ? 'cursor-pointer bg-amber-500/[0.03] border-amber-500/20 hover:border-amber-500/40 hover:bg-amber-500/[0.07]'
+                          : item.completed
+                            ? 'cursor-default bg-white/[0.01] border-white/[0.03] opacity-60'
+                            : 'cursor-default bg-[#0C1A1D] border-white/[0.05]',
+                      ].join(' ')}>
+
+                      {/* Circle indicator */}
+                      <div className={[
+                        'w-5 h-5 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center border transition-all',
+                        item.completed
+                          ? 'bg-emerald-500/20 border-emerald-500/40'
+                          : isClickable
+                            ? 'bg-amber-500/10 border-amber-500/30 group-hover:border-amber-500/60'
+                            : 'bg-white/[0.03] border-white/10',
+                      ].join(' ')}>
+                        {item.completed && <span className="text-emerald-400 text-[10px] font-bold">✓</span>}
+                      </div>
+
+                      {/* Text */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center flex-wrap gap-2">
+                          <p className={[
+                            'text-sm font-semibold transition-colors',
+                            item.completed ? 'line-through text-slate-500' : 'text-slate-200',
+                          ].join(' ')}>
+                            {item.title}
+                          </p>
+                          {/* Badge */}
+                          {isSystem && !item.completed && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-500 border border-white/[0.05] uppercase tracking-wider">
+                              auto
+                            </span>
+                          )}
+                          {isClickable && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 uppercase tracking-wider">
+                              action needed
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-0.5">{item.description}</p>
+                        {item.completed_at && (
+                          <p className="text-[10px] text-teal-700 mt-1">
+                            ✓ Completed {new Date(item.completed_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Right hint */}
+                      {isClickable && (
+                        <span className="hidden sm:block text-xs text-amber-400/60 group-hover:text-amber-400 transition-colors font-medium whitespace-nowrap flex-shrink-0 mt-0.5">
+                          Watch video →
+                        </span>
                       )}
                     </div>
-                    {!item.completed && (
-                      <span className="text-xs text-slate-600 group-hover:text-teal-400 transition-colors font-medium opacity-0 group-hover:opacity-100 whitespace-nowrap hidden sm:block">
-                        Mark done
-                      </span>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )
         })}
       </div>
+
+      {/* Policy Training Modal */}
+      {policyModalOpen && (
+        <PolicyTrainingModal
+          isCompleted={policyDone}
+          onClose={() => setPolicyModalOpen(false)}
+          onMarkDone={handlePolicyMarkDone}
+        />
+      )}
     </div>
   )
 }

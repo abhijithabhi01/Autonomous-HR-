@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { useProvisioningRequests } from '../../hooks/useData'
+import { useProvisioningRequests, useCleanupChecklistTitles } from '../../hooks/useData'
 
 const NAV = [
   { to: '/it',              label: 'Provisioning', icon: '🖥️', exact: true },
@@ -48,6 +48,12 @@ export default function ITLayout() {
 
   const { data: requests = [] } = useProvisioningRequests()
   const pendingCount = requests.filter(r => r.status === 'pending').length
+  const cleanup = useCleanupChecklistTitles()
+
+  // On first mount, purge stale Team Introduction + Day 7 items from all existing candidates
+  useEffect(() => {
+    cleanup.mutate(['Team Introduction', 'Day 7 Check-in', 'Wellbeing Check-in'])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSignOut = async () => {
     setSigningOut(true)

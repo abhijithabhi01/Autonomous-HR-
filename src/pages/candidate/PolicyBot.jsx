@@ -1,9 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAuth } from '../../hooks/useAuth'
 import { useCreatePolicySession, useAddPolicyMessage } from '../../hooks/useData'
-import { answerPolicyQuestion } from '../../lib/ai'
 
-// ── Company policy (edit to match your real policies) ─────────
 const POLICY_CONTEXT = `
 LEAVE POLICY:
 - Annual Leave: 21 days per calendar year (accrues 1.75 days/month)
@@ -54,6 +52,57 @@ const SUGGESTIONS = [
   'Can I work from home during probation?',
 ]
 
+// ── Direct Gemini 2.5 Flash call ──────────────────────────────
+async function askGemini(question, history) {
+  const key = import.meta.env.VITE_GEMINI_API_KEY
+  if (!key) throw new Error('VITE_GEMINI_API_KEY not set in frontend .env')
+
+  const systemPrompt =
+    'You are a helpful HR Policy Assistant for D Company. ' +
+    'Answer questions using ONLY the company policy below. ' +
+    'Be concise, friendly, and direct. If a topic is not covered in the policy, say so clearly and suggest contacting HR at hr@dcompany.com.\n\n' +
+    'COMPANY POLICY:\n' + POLICY_CONTEXT
+
+  // Build conversation history for multi-turn context
+  const contents = [
+    { role: 'user', parts: [{ text: systemPrompt + '\n\nUser question: ' + question }] },
+  ]
+
+  // Add previous turns for context (last 6 messages)
+  if (history.length > 1) {
+    const recent = history.slice(-6)
+    contents[0].parts[0].text = systemPrompt
+    recent.forEach(msg => {
+      if (msg.id === 'init') return
+      contents.push({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }],
+      })
+    })
+    contents.push({ role: 'user', parts: [{ text: question }] })
+  }
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${key}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error?.message || `Gemini ${res.status}`)
+  }
+
+  const data = await res.json()
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Sorry, I could not generate a response.'
+}
+
 function Message({ msg }) {
   const isUser = msg.role === 'user'
   return (
@@ -70,22 +119,13 @@ function Message({ msg }) {
             : 'bg-[#131929] border border-white/[0.06] text-slate-200 rounded-tl-sm'}`}>
           {msg.content}
         </div>
-
-        {/* Source badge — shown for bot messages that came from policy */}
-        {!isUser && msg.source && (
+        {!isUser && msg.model && (
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-            <span className="text-[10px]">📎</span>
-            <span className="text-[10px] text-slate-500">{msg.source}</span>
-            {msg.isLocal && (
-              <span className="text-[10px] text-amber-500/70 ml-1">· local search</span>
-            )}
-            {!msg.isLocal && msg.confidence > 0 && (
-              <span className="text-[10px] text-emerald-500/70 ml-1">· AI · {msg.confidence}%</span>
-            )}
+            <span className="text-[10px]">✨</span>
+            <span className="text-[10px] text-slate-500">Gemini 2.5 Flash</span>
           </div>
         )}
       </div>
-
       {isUser && (
         <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center flex-shrink-0 mt-0.5 text-sm">
           👤
@@ -96,19 +136,18 @@ function Message({ msg }) {
 }
 
 export default function PolicyBot() {
-  const { user }        = useAuth()
-  const createSession   = useCreatePolicySession()
-  const addMessage      = useAddPolicyMessage()
-  const sessionRef      = useRef(null)   // holds current session id
-  const endRef          = useRef(null)
-  const inputRef   = useRef(null)
+  const { user }      = useAuth()
+  const createSession = useCreatePolicySession()
+  const addMessage    = useAddPolicyMessage()
+  const sessionRef    = useRef(null)
+  const endRef        = useRef(null)
+  const inputRef      = useRef(null)
 
-  const [input, setInput]     = useState('')
-  const [loading, setLoading] = useState(false)
+  const [input,    setInput]    = useState('')
+  const [loading,  setLoading]  = useState(false)
   const [messages, setMessages] = useState([{
-    id:      'init',
-    role:    'bot',
-    content: "Hi! I'm your HR Policy Assistant. Ask me anything about leaves, expenses, remote work, payroll, or any company policy.",
+    id: 'init', role: 'bot',
+    content: "Hi! I'm your HR Policy Assistant powered by Gemini 2.5 Flash. Ask me anything about leaves, expenses, remote work, payroll, or any company policy.",
   }])
 
   useEffect(() => {
@@ -121,52 +160,34 @@ export default function PolicyBot() {
     setInput('')
     setLoading(true)
 
-    // Add user message immediately
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: question }])
+    const userMsg = { id: Date.now(), role: 'user', content: question }
+    setMessages(prev => [...prev, userMsg])
 
-    // answerPolicyQuestion never throws — always returns a safe object
-    // Falls back to local keyword search if AI is unavailable
-    const result = await answerPolicyQuestion(question, POLICY_CONTEXT)
+    let answer = ''
+    try {
+      answer = await askGemini(question, [...messages, userMsg])
+    } catch (err) {
+      console.warn('[PolicyBot] Gemini failed:', err.message)
+      answer = "I'm having trouble connecting right now. Please try again in a moment or contact HR at hr@dcompany.com."
+    }
 
     setMessages(prev => [...prev, {
-      id:         Date.now() + 1,
-      role:       'bot',
-      content:    result.answer,
-      source:     result.source_section || null,
-      confidence: result.confidence     || 0,
-      isLocal:    result.is_local       ?? true,
+      id: Date.now() + 1, role: 'bot', content: answer, model: true,
     }])
-
     setLoading(false)
     inputRef.current?.focus()
 
-    // Log to Supabase using new policy_sessions + policy_messages schema (best-effort)
+    // Log to Firestore (best-effort)
     try {
       const candidateId = user?.candidate_id || null
       const employeeId  = user?.employee_id  || null
-
-      // Create session on first message of this conversation
       if (!sessionRef.current && (candidateId || employeeId)) {
         const session = await createSession.mutateAsync({ candidateId, employeeId })
         sessionRef.current = session.id
       }
-
       if (sessionRef.current) {
-        // Save user question
-        await addMessage.mutateAsync({
-          sessionId: sessionRef.current,
-          role:      'user',
-          content:   question,
-        })
-        // Save bot answer
-        await addMessage.mutateAsync({
-          sessionId:     sessionRef.current,
-          role:          'bot',
-          content:       result.answer,
-          sourceSection: result.source_section || null,
-          confidence:    result.confidence     || null,
-          isLocal:       result.is_local       ?? true,
-        })
+        await addMessage.mutateAsync({ sessionId: sessionRef.current, role: 'user', content: question })
+        await addMessage.mutateAsync({ sessionId: sessionRef.current, role: 'bot', content: answer })
       }
     } catch (err) {
       console.warn('[PolicyBot] Logging non-fatal:', err.message)
@@ -174,17 +195,17 @@ export default function PolicyBot() {
   }
 
   return (
-    <div className="flex flex-col h-screen p-8 max-w-3xl mx-auto">
+    <div className="flex flex-col h-screen p-4 sm:p-8 max-w-3xl mx-auto">
       {/* Header */}
       <div className="mb-6 flex-shrink-0">
         <h1 className="text-2xl font-display font-bold text-white">HR Policy Bot</h1>
         <div className="flex items-center gap-2 mt-1">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <p className="text-slate-500 text-sm">Powered by OpenRouter AI · Falls back to local search</p>
+          <p className="text-slate-500 text-sm">Powered by Gemini 2.5 Flash</p>
         </div>
       </div>
 
-      {/* Quick suggestions — hide after first message */}
+      {/* Quick suggestions */}
       {messages.length <= 1 && (
         <div className="mb-5 flex-shrink-0">
           <p className="text-[10px] text-slate-600 mb-2 font-bold uppercase tracking-widest">Quick questions</p>
@@ -199,19 +220,16 @@ export default function PolicyBot() {
         </div>
       )}
 
-      {/* Message list */}
+      {/* Messages */}
       <div className="flex-1 overflow-y-auto space-y-4 mb-4 min-h-0 pr-1">
         {messages.map(msg => <Message key={msg.id} msg={msg} />)}
-
-        {/* Typing indicator */}
         {loading && (
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center flex-shrink-0 text-sm">🤖</div>
             <div className="px-4 py-3 rounded-2xl rounded-tl-sm bg-[#131929] border border-white/[0.06]">
               <div className="flex gap-1 items-center h-5">
-                {[0, 1, 2].map(i => (
-                  <div key={i}
-                    className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce"
+                {[0,1,2].map(i => (
+                  <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-bounce"
                     style={{ animationDelay: `${i * 150}ms` }} />
                 ))}
               </div>
@@ -221,7 +239,7 @@ export default function PolicyBot() {
         <div ref={endRef} />
       </div>
 
-      {/* Input row */}
+      {/* Input */}
       <div className="flex gap-3 flex-shrink-0">
         <input
           ref={inputRef}
@@ -235,7 +253,7 @@ export default function PolicyBot() {
         <button
           onClick={() => sendMessage()}
           disabled={loading || !input.trim()}
-          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white w-12 h-12 rounded-xl font-semibold transition-all flex items-center justify-center disabled:cursor-not-allowed flex-shrink-0"
+          className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white w-12 h-12 rounded-xl transition-all flex items-center justify-center disabled:cursor-not-allowed flex-shrink-0"
           style={{ boxShadow: '0 0 16px rgba(99,102,241,0.25)' }}>
           {loading
             ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />

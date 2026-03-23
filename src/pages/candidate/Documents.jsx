@@ -39,13 +39,12 @@ const DOC_TYPES = [
     ],
   },
   {
-    type: 'employment_letter', label: 'Employment Letter', icon: '📄', required: true,
+    type: 'employment_letter', label: 'Offer Letter', icon: '📝', required: true,
     fields: [
-      { key: 'employee_name', label: 'Employee Name' },
+      { key: 'employee_name', label: 'Candidate Name' },
       { key: 'company',       label: 'Company' },
-      { key: 'position',      label: 'Position' },
-      { key: 'start_date',    label: 'Start Date' },
-      { key: 'end_date',      label: 'End Date' },
+      { key: 'position',      label: 'Position / Role' },
+      { key: 'start_date',    label: 'Joining Date' },
     ],
   },
   {
@@ -331,6 +330,19 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
 
             {/* AI verdict */}
             {extracted ? (
+              extracted.wrong_document ? (
+                // Wrong document type uploaded
+                <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-red-500/[0.08] border border-red-500/30">
+                  <span className="text-xl flex-shrink-0 mt-0.5">🚫</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-red-300">Wrong document type</p>
+                    <p className="text-xs text-red-400/80 mt-1 leading-relaxed">
+                      {extracted.flags?.[0] || 'Please upload the correct document for this field.'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-2">Cancel and upload the correct document above ↑</p>
+                  </div>
+                </div>
+              ) : (
               <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border
                 ${extracted.is_authentic !== false
                   ? 'bg-emerald-500/[0.06] border-emerald-500/20'
@@ -353,6 +365,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
                   )}
                 </div>
               </div>
+              )
             ) : (
               <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-500/[0.06] border border-amber-500/20">
                 <span className="text-xl">⚠️</span>
@@ -410,7 +423,8 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
                 Cancel
               </button>
               <button onClick={handleConfirm}
-                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 transition-all flex items-center justify-center gap-2"
+                disabled={extracted?.wrong_document}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 transition-all flex items-center justify-center gap-2 disabled:opacity-30 disabled:cursor-not-allowed"
                 style={{ boxShadow: '0 0 14px rgba(20,184,166,0.25)' }}>
                 <span>✓</span> Confirm & Save
               </button>

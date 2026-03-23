@@ -7,24 +7,26 @@ import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useCandidates, useAddCandidate, useDeleteCandidate } from '../../hooks/useData'
 import toast from 'react-hot-toast'
 
-const FILTERS     = ['All', 'Pre-Joining', 'Onboarding']
+const FILTERS = ['All', 'Pre-Joining', 'Onboarding']
 const DEPARTMENTS = ['Engineering', 'Product', 'Design', 'Marketing', 'Finance', 'HR', 'Operations', 'Sales', 'Legal']
 
 // tomorrow's date as YYYY-MM-DD — used for both default and min
-function tomorrowStr() {
+function nextValidDate() {
   const d = new Date()
-  d.setDate(d.getDate() + 1)
+  do {
+    d.setDate(d.getDate() + 1)
+  } while (d.getDay() === 0 || d.getDay() === 6) // skip Sun/Sat
   return d.toISOString().slice(0, 10)
 }
 
 const EMPTY_FORM = {
-  full_name:      '',
+  full_name: '',
   personal_email: '',
-  position:       '',
-  department:     'Engineering',
-  manager:        '',
-  location:       '',
-  start_date:     tomorrowStr(),   // default = tomorrow, never today
+  position: '',
+  department: 'Engineering',
+  manager: '',
+  location: '',
+  start_date: nextValidDate(),   // default = tomorrow, never today
 }
 
 // Field supports extra HTML input props (e.g. min, max) via ...rest
@@ -43,7 +45,7 @@ function Field({ label, name, type = 'text', required, value, onChange, error, h
           focus:outline-none focus:border-indigo-500/50 transition-all
           ${error ? 'border-red-500/50' : 'border-white/[0.08]'}`}
       />
-      {hint  && <p className="text-slate-600 text-xs mt-1">{hint}</p>}
+      {hint && <p className="text-slate-600 text-xs mt-1">{hint}</p>}
       {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
     </div>
   )
@@ -51,7 +53,7 @@ function Field({ label, name, type = 'text', required, value, onChange, error, h
 
 // ── Add Candidate Modal ─────────────────────────────────────
 function AddCandidateModal({ onClose, onSave, isLoading }) {
-  const [form,   setForm]   = useState(EMPTY_FORM)
+  const [form, setForm] = useState(EMPTY_FORM)
   const [errors, setErrors] = useState({})
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -59,7 +61,7 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
   const validate = () => {
     const e = {}
 
-    if (!form.full_name.trim())           e.full_name = 'Full name is required'
+    if (!form.full_name.trim()) e.full_name = 'Full name is required'
     else if (form.full_name.trim().length < 3) e.full_name = 'Must be at least 3 characters'
 
     if (!form.personal_email.trim())
@@ -67,17 +69,24 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.personal_email))
       e.personal_email = 'Enter a valid email address'
 
-    if (!form.position.trim())            e.position = 'Position is required'
+    if (!form.position.trim()) e.position = 'Position is required'
 
     if (!form.start_date) {
-      e.start_date = 'Start date is required'
+      e.start_date = 'Last date is required'
     } else {
-      // Block today AND past — only future dates allowed
       const selected = new Date(form.start_date)
-      const today    = new Date()
+      const today = new Date()
+
+      // normalize time
       today.setHours(0, 0, 0, 0)
+      selected.setHours(0, 0, 0, 0)
+
+      const day = selected.getDay() // 0 = Sunday, 6 = Saturday
+
       if (selected <= today) {
-        e.start_date = 'Start date must be a future date (tomorrow or later)'
+        e.start_date = 'Date must be after today'
+      } else if (day === 0 || day === 6) {
+        e.start_date = 'Weekends (Saturday & Sunday) are not allowed'
       }
     }
 
@@ -132,7 +141,7 @@ function AddCandidateModal({ onClose, onSave, isLoading }) {
 
             {/* min={tomorrowStr()} prevents browser calendar from showing past/today */}
             <Field label="Start Date" name="start_date" type="date" required
-              min={tomorrowStr()}
+              min={nextValidDate()}
               value={form.start_date} onChange={set} error={errors.start_date} />
 
             <Field label="Manager" name="manager"
@@ -194,12 +203,12 @@ function DeleteModal({ candidate, onClose, onConfirm, isLoading }) {
 export default function Candidates() {
   const navigate = useNavigate()
   const { data: candidates = [], isLoading } = useCandidates()
-  const addMutation    = useAddCandidate()
+  const addMutation = useAddCandidate()
   const deleteMutation = useDeleteCandidate()
 
-  const [filter,       setFilter]      = useState('All')
-  const [search,       setSearch]      = useState('')
-  const [showAddModal, setShowAdd]     = useState(false)
+  const [filter, setFilter] = useState('All')
+  const [search, setSearch] = useState('')
+  const [showAddModal, setShowAdd] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   // Tell HRLayout to pause realtime polling whenever a modal is open.
@@ -213,11 +222,11 @@ export default function Candidates() {
   const filtered = candidates.filter(c => {
     const matchFilter =
       filter === 'Pre-Joining' ? c.onboarding_status === 'pre_joining' :
-      filter === 'Onboarding'  ? c.onboarding_status === 'onboarding'  : true
+        filter === 'Onboarding' ? c.onboarding_status === 'onboarding' : true
     const q = search.toLowerCase()
     return matchFilter && (
-      c.full_name.toLowerCase().includes(q)  ||
-      c.position.toLowerCase().includes(q)   ||
+      c.full_name.toLowerCase().includes(q) ||
+      c.position.toLowerCase().includes(q) ||
       c.department.toLowerCase().includes(q)
     )
   })
@@ -265,12 +274,7 @@ export default function Candidates() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {candidates.length > 0 && (
-            <div className="px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse" />
-              <span className="text-xs font-bold text-indigo-400">{candidates.length} in pipeline</span>
-            </div>
-          )}
+          
           <button onClick={() => setShowAdd(true)}
             className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all"
             style={{ boxShadow: '0 0 16px rgba(99,102,241,0.3)' }}>
@@ -287,15 +291,7 @@ export default function Candidates() {
             placeholder="Search candidates…"
             className="w-full bg-[#0D1120] border border-white/[0.06] rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/40 transition-all" />
         </div>
-        <div className="flex bg-[#0D1120] border border-white/[0.06] rounded-xl p-1 gap-1">
-          {FILTERS.map(f => (
-            <button key={f} onClick={() => setFilter(f)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all
-                ${filter === f ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
-              {f}
-            </button>
-          ))}
-        </div>
+      
       </div>
 
       {/* Empty state */}
@@ -319,12 +315,13 @@ export default function Candidates() {
             <div key={c.id}
               onClick={() => navigate(`/hr/candidates/${c.id}`)}
               className="rounded-2xl border border-white/[0.06] bg-[#0D1120] p-5 hover:border-indigo-500/20 hover:-translate-y-0.5 transition-all duration-200 animate-slide-up opacity-0 cursor-pointer group relative"
-              style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'forwards',
-                backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, transparent 60%)' }}>
+              style={{
+                animationDelay: `${i * 60}ms`, animationFillMode: 'forwards',
+                backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.02) 0%, transparent 60%)'
+              }}>
 
-              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl ${
-                c.onboarding_status === 'onboarding' ? 'bg-indigo-500' : 'bg-amber-500'
-              }`} />
+              <div className={`absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl ${c.onboarding_status === 'onboarding' ? 'bg-indigo-500' : 'bg-amber-500'
+                }`} />
 
               <button
                 onClick={e => { e.stopPropagation(); setDeleteTarget(c) }}

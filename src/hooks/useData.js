@@ -196,11 +196,8 @@ export function useUploadDocument() {
       })
     },
     onSuccess: (data) => {
-      // Invalidate both the specific candidateId key AND the broad key
-      // in case candidate_id in response doesn't exactly match the query key
       queryClient.invalidateQueries({ queryKey: ['documents', data.candidate_id] })
       queryClient.invalidateQueries({ queryKey: ['documents'] })
-      // Don't show toast here — DocCard shows its own toast with doc type name
     },
     onError: (err) => toast.error(err.message),
   })
