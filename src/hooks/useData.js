@@ -434,3 +434,22 @@ export function useCreateHRAdmin() {
     }),
   })
 }
+// ── Final Submit — candidate finalises onboarding ─────────────
+// Calls POST /api/candidates/:id/final-submit which:
+//   • Auto-ticks "ID Card Issued" checklist item
+//   • Sends ID card + completion email to personal email
+//   • Sets final_submitted_at on the candidate doc
+export function useFinalSubmitOnboarding() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (candidateId) => apiFetch(`/api/candidates/${candidateId}/final-submit`, {
+      method: 'POST',
+    }),
+    onSuccess: (_, candidateId) => {
+      queryClient.invalidateQueries({ queryKey: ['checklist', candidateId] })
+      queryClient.invalidateQueries({ queryKey: ['candidate', candidateId] })
+      queryClient.invalidateQueries({ queryKey: ['candidates'] })
+    },
+    onError: (err) => console.warn('[useFinalSubmitOnboarding]', err.message),
+  })
+}

@@ -162,7 +162,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     maxFiles: 1,
-    accept: { 'image/*': [], 'application/pdf': ['.pdf'] },
+    accept: {'image/jpeg': ['.jpg', '.jpeg'],'image/png':  ['.png'],'application/pdf': ['.pdf']},
     maxSize: 10 * 1024 * 1024,
     disabled: phase === 'analyzing' || phase === 'saving',
   })
@@ -197,7 +197,6 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
         file:    pendingFile,
         extractedData: finalData,
       })
-      toast.success(`${docType.label} saved successfully! ✓`)
       setPhase('idle')
       setPendingFile(null)
       setExtracted(null)
@@ -501,7 +500,7 @@ function DocCard({ docType, candidateId, existingDoc, uploadMutation, index }) {
                     <p className="text-sm font-medium text-slate-300">
                       {isDragActive ? 'Drop it here!' : 'Drag & drop or click to upload'}
                     </p>
-                    <p className="text-xs text-slate-600 mt-1">PDF, JPG, PNG, WebP · max 10 MB</p>
+                    <p className="text-xs text-slate-600 mt-1">PDF, JPG, PNG, WebP · max 2 MB</p>
                     <p className="text-[11px] text-indigo-400/70 mt-1.5 font-medium">✨ AI will extract and verify automatically</p>
                   </>
                 )}
