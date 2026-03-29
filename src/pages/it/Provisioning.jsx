@@ -1,29 +1,52 @@
 import { useState } from 'react'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
-import { useProvisioningRequests, useUpdateProvisioning } from '../../hooks/useData'
+import { useProvisioningRequests, useUpdateProvisioning, useCandidates } from '../../hooks/useData'
 import toast from 'react-hot-toast'
 
-// Systems that need to be provisioned for each new hire
+// Systems that IT needs to provision for each new hire
 const SYSTEMS = [
-  { key: 'email',    label: 'Work Email',     icon: '📧', desc: 'G Suite / Outlook account' },
-  { key: 'slack',    label: 'Slack',          icon: '💬', desc: 'Workspace + channels' },
-  { key: 'laptop',   label: 'Laptop Setup',   icon: '💻', desc: 'Device config + MDM enroll' },
-  { key: 'vpn',      label: 'VPN Access',     icon: '🔒', desc: 'Remote access credentials' },
-  { key: 'jira',     label: 'Jira / Notion',  icon: '📋', desc: 'Project management tools' },
-  { key: 'hr_system',label: 'HR System',      icon: '🏢', desc: 'BambooHR / Workday login' },
+  { key: 'email',     label: 'Work Email',    icon: '📧', desc: 'G Suite / Outlook account' },
+  { key: 'slack',     label: 'Slack',         icon: '💬', desc: 'Workspace + channels' },
+  { key: 'laptop',    label: 'Laptop Setup',  icon: '💻', desc: 'Device config + MDM enroll' },
+  { key: 'vpn',       label: 'VPN Access',    icon: '🔒', desc: 'Remote access credentials' },
+  { key: 'jira',      label: 'Jira / Notion', icon: '📋', desc: 'Project management tools' },
+  { key: 'hr_system', label: 'HR System',     icon: '🏢', desc: 'BambooHR / Workday login' },
 ]
 
 const STATUS_STYLES = {
   pending:     'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  in_progress: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+  in_progress: 'bg-blue-500/10  text-blue-400  border-blue-500/20',
   completed:   'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-  cancelled:   'bg-red-500/10 text-red-400 border-red-500/20',
+  cancelled:   'bg-red-500/10   text-red-400   border-red-500/20',
 }
-const STATUS_LABEL = { pending: 'Pending', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled' }
+const STATUS_LABEL = {
+  pending: 'Pending', in_progress: 'In Progress', completed: 'Completed', cancelled: 'Cancelled',
+}
 
-function RequestCard({ req, onUpdate }) {
+// ── Onboarding progress ring ───────────────────────────────────
+function ProgressRing({ pct }) {
+  const r   = 18
+  const circ = 2 * Math.PI * r
+  const dash = (pct / 100) * circ
+  const color = pct === 100 ? '#10B981' : pct > 50 ? '#3B82F6' : '#F59E0B'
+  return (
+    <svg width="48" height="48" viewBox="0 0 48 48" className="flex-shrink-0">
+      <circle cx="24" cy="24" r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="4" />
+      <circle cx="24" cy="24" r={r} fill="none" stroke={color} strokeWidth="4"
+        strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+        transform="rotate(-90 24 24)" style={{ transition: 'stroke-dasharray 0.6s ease' }} />
+      <text x="24" y="24" textAnchor="middle" dominantBaseline="central"
+        fontSize="10" fontWeight="700" fill={color}>
+        {pct}%
+      </text>
+    </svg>
+  )
+}
+
+// ── Single request card ────────────────────────────────────────
+function RequestCard({ req, candidate, onUpdate }) {
   const [expanded, setExpanded] = useState(false)
-  const [systems, setSystems]   = useState(req.systems_provisioned || {})
+  const [systems,  setSystems]  = useState(req.systems_provisioned || {})
 
   const toggleSystem = (key) => {
     const next = { ...systems, [key]: !systems[key] }
@@ -31,29 +54,35 @@ function RequestCard({ req, onUpdate }) {
     onUpdate(req.id, { systems_provisioned: next })
   }
 
-  const allDone    = SYSTEMS.every(s => systems[s.key])
-  const doneCt     = SYSTEMS.filter(s => systems[s.key]).length
-  const isPending  = req.status === 'pending'
-  const isInProg   = req.status === 'in_progress'
-  const isDone     = req.status === 'completed'
+  const doneCt    = SYSTEMS.filter(s => systems[s.key]).length
+  const allDone   = doneCt === SYSTEMS.length
+  const isPending = req.status === 'pending'
+  const isInProg  = req.status === 'in_progress'
+  const isDone    = req.status === 'completed'
+
+  // Onboarding progress from the linked candidate doc
+  const obPct = candidate?.onboarding_progress ?? null
+
+  const cardBorder = isDone
+    ? 'border-emerald-500/15 bg-emerald-500/[0.02]'
+    : isPending
+      ? 'border-amber-500/15 bg-amber-500/[0.02]'
+      : 'border-blue-500/15 bg-blue-500/[0.02]'
 
   return (
-    <div className={`rounded-2xl border overflow-hidden transition-all duration-200
-      ${isDone
-        ? 'border-emerald-500/15 bg-emerald-500/[0.02]'
-        : isPending
-          ? 'border-amber-500/15 bg-amber-500/[0.02]'
-          : 'border-blue-500/15 bg-blue-500/[0.02]'}`}>
+    <div className={`rounded-2xl border overflow-hidden transition-all duration-200 ${cardBorder}`}>
 
-      {/* Header row */}
+      {/* ── Card header ─────────────────────────────────────── */}
       <div className="p-4 sm:p-5">
         <div className="flex items-start gap-4">
+
           {/* Avatar */}
           <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-sm font-bold text-indigo-300 flex-shrink-0">
             {(req.candidate_name || '?').slice(0, 2).toUpperCase()}
           </div>
 
           <div className="flex-1 min-w-0">
+            {/* Name + status */}
             <div className="flex flex-wrap items-center gap-2 mb-0.5">
               <p className="font-semibold text-slate-200 text-sm">{req.candidate_name}</p>
               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border uppercase tracking-wide ${STATUS_STYLES[req.status] || STATUS_STYLES.pending}`}>
@@ -61,33 +90,59 @@ function RequestCard({ req, onUpdate }) {
               </span>
             </div>
             <p className="text-xs text-slate-500">{req.position} · {req.department}</p>
-            <div className="flex flex-wrap gap-3 mt-2 text-xs text-slate-500">
-              <span>📧 {req.work_email}</span>
-              <span>🗓️ Starting {req.start_date}</span>
-              {req.manager && <span>👤 {req.manager}</span>}
-              {req.location && <span>📍 {req.location}</span>}
+
+            {/* Meta row */}
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-xs text-slate-500">
+              {req.work_email
+                ? <span>📧 {req.work_email}</span>
+                : <span className="text-amber-500/70 italic">📧 email pending final submit</span>}
+              {req.start_date && <span>🗓️ {req.start_date}</span>}
+              {req.manager   && <span>👤 {req.manager}</span>}
+              {req.location  && <span>📍 {req.location}</span>}
             </div>
+
+            {/* ── Onboarding progress bar ────────────────── */}
+            {obPct !== null && (
+              <div className="mt-3">
+                <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                  <span>Candidate onboarding progress</span>
+                  <span className={`font-bold ${obPct === 100 ? 'text-emerald-400' : obPct > 50 ? 'text-blue-400' : 'text-amber-400'}`}>
+                    {obPct}%
+                  </span>
+                </div>
+                <div className="w-full bg-white/[0.04] rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700
+                      ${obPct === 100 ? 'bg-emerald-500' : obPct > 50 ? 'bg-blue-500' : 'bg-amber-500'}`}
+                    style={{ width: `${obPct}%` }}
+                  />
+                </div>
+                {obPct === 100 && (
+                  <p className="text-[10px] text-emerald-400 mt-1 font-semibold">✅ Onboarding complete</p>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Progress ring */}
-          <div className="text-center flex-shrink-0">
-            <div className={`text-xl font-display font-bold ${allDone ? 'text-emerald-400' : isPending ? 'text-amber-400' : 'text-blue-400'}`}>
-              {doneCt}/{SYSTEMS.length}
-            </div>
-            <p className="text-[10px] text-slate-600">systems</p>
+          {/* IT provisioning ring */}
+          <div className="flex flex-col items-center gap-1 flex-shrink-0">
+            <ProgressRing pct={Math.round((doneCt / SYSTEMS.length) * 100)} />
+            <p className="text-[9px] text-slate-600">IT setup</p>
           </div>
         </div>
 
-        {/* Progress bar */}
-        <div className="mt-4 mb-0">
-          <div className="flex justify-between text-xs mb-1.5">
-            <span className="text-slate-500">Provisioning progress</span>
-            <span className="text-slate-400 font-semibold">{Math.round((doneCt / SYSTEMS.length) * 100)}%</span>
+        {/* IT progress bar */}
+        <div className="mt-4">
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-500">Systems provisioned</span>
+            <span className="text-slate-400 font-semibold">{doneCt} / {SYSTEMS.length}</span>
           </div>
           <div className="w-full bg-white/[0.04] rounded-full h-1.5 overflow-hidden">
-            <div className={`h-full rounded-full transition-all duration-700
-              ${allDone ? 'bg-emerald-500' : isPending ? 'bg-amber-500' : 'bg-blue-500'}`}
-              style={{ width: `${(doneCt / SYSTEMS.length) * 100}%` }} />
+            <div
+              className={`h-full rounded-full transition-all duration-700
+                ${allDone ? 'bg-emerald-500' : isPending ? 'bg-amber-500' : 'bg-blue-500'}`}
+              style={{ width: `${(doneCt / SYSTEMS.length) * 100}%` }}
+            />
           </div>
         </div>
 
@@ -98,7 +153,7 @@ function RequestCard({ req, onUpdate }) {
         </button>
       </div>
 
-      {/* Systems checklist */}
+      {/* ── Systems checklist ───────────────────────────────── */}
       {expanded && (
         <div className="border-t border-white/[0.05] p-4 sm:p-5">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
@@ -146,10 +201,13 @@ function RequestCard({ req, onUpdate }) {
                   Mark Done Anyway
                 </button>
               )}
-              <button onClick={() => {
+              <button
+                onClick={() => {
                   const notes = prompt('Add a note or comment (optional):')
-                  onUpdate(req.id, { notes: notes || '' })
-                  toast.success('Note saved')
+                  if (notes !== null) {
+                    onUpdate(req.id, { notes })
+                    toast.success('Note saved')
+                  }
                 }}
                 className="px-4 py-2 bg-white/[0.03] hover:bg-white/[0.06] text-slate-400 text-xs font-semibold rounded-xl border border-white/[0.06] transition-all">
                 📝 Add Note
@@ -157,9 +215,9 @@ function RequestCard({ req, onUpdate }) {
             </div>
           )}
           {isDone && (
-            <div className="flex items-center gap-2 text-xs text-emerald-400">
-              <span>✅</span> All systems provisioned. Candidate has full access.
-            </div>
+            <p className="text-xs text-emerald-400 flex items-center gap-2">
+              <span>✅</span> All systems provisioned — candidate has full access.
+            </p>
           )}
         </div>
       )}
@@ -167,10 +225,14 @@ function RequestCard({ req, onUpdate }) {
   )
 }
 
-// ── Main Page ─────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────
 export default function Provisioning({ showCompleted = false }) {
-  const { data: allRequests = [], isLoading } = useProvisioningRequests()
+  const { data: allRequests = [], isLoading: reqLoading } = useProvisioningRequests()
+  const { data: allCandidates = [] }                       = useCandidates()
   const updateMutation = useUpdateProvisioning()
+
+  // Build a quick lookup: candidate_id → candidate doc
+  const candidateMap = Object.fromEntries(allCandidates.map(c => [c.id, c]))
 
   const requests = showCompleted
     ? allRequests.filter(r => r.status === 'completed')
@@ -183,13 +245,13 @@ export default function Provisioning({ showCompleted = false }) {
   const handleUpdate = (id, patch) => {
     updateMutation.mutate({ id, ...patch }, {
       onSuccess: () => {
-        if (patch.status === 'completed') toast.success('Provisioning completed! 🎉')
+        if (patch.status === 'completed')   toast.success('Provisioning completed! 🎉')
         else if (patch.status === 'in_progress') toast.success('Request started')
       },
     })
   }
 
-  if (isLoading) {
+  if (reqLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <LoadingSpinner size="lg" text="Loading provisioning requests…" />
@@ -199,24 +261,25 @@ export default function Provisioning({ showCompleted = false }) {
 
   return (
     <div className="p-6 lg:p-8 max-w-4xl mx-auto">
+
       {/* Header */}
       <div className="mb-7 animate-fade-in">
         <h1 className="text-2xl font-display font-bold text-white">
-          {showCompleted ? 'Completed Provisioning' : 'IT Provisioning Requests'}
+          {showCompleted ? 'Completed Provisioning' : 'IT Provisioning'}
         </h1>
         <p className="text-slate-500 text-sm mt-1">
           {showCompleted
-            ? `${completed} candidates fully provisioned`
+            ? `${completed} candidate${completed !== 1 ? 's' : ''} fully provisioned`
             : 'Set up system access for incoming candidates'}
         </p>
       </div>
 
-      {/* Stats */}
+      {/* Stats (active view only) */}
       {!showCompleted && (
         <div className="grid grid-cols-3 gap-3 mb-7">
           {[
-            { label: 'Pending',     count: pending,   color: 'text-amber-400',   bg: 'bg-amber-500/5 border-amber-500/15' },
-            { label: 'In Progress', count: inProg,    color: 'text-blue-400',    bg: 'bg-blue-500/5 border-blue-500/15' },
+            { label: 'Pending',     count: pending,   color: 'text-amber-400',   bg: 'bg-amber-500/5   border-amber-500/15' },
+            { label: 'In Progress', count: inProg,    color: 'text-blue-400',    bg: 'bg-blue-500/5    border-blue-500/15' },
             { label: 'Completed',   count: completed, color: 'text-emerald-400', bg: 'bg-emerald-500/5 border-emerald-500/15' },
           ].map(({ label, count, color, bg }) => (
             <div key={label} className={`rounded-2xl border p-4 text-center ${bg}`}>
@@ -234,14 +297,20 @@ export default function Provisioning({ showCompleted = false }) {
           <p className="font-medium text-slate-300">
             {showCompleted ? 'No completed requests yet' : 'No pending provisioning requests'}
           </p>
-          {!showCompleted && <p className="text-sm mt-1">New requests appear here when HR adds a candidate</p>}
+          {!showCompleted && (
+            <p className="text-sm mt-1">New requests appear here when HR adds a candidate</p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
           {requests.map((req, i) => (
             <div key={req.id} className="animate-slide-up opacity-0"
               style={{ animationDelay: `${i * 60}ms`, animationFillMode: 'forwards' }}>
-              <RequestCard req={req} onUpdate={handleUpdate} />
+              <RequestCard
+                req={req}
+                candidate={candidateMap[req.candidate_id] || null}
+                onUpdate={handleUpdate}
+              />
             </div>
           ))}
         </div>

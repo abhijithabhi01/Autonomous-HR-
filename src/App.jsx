@@ -12,7 +12,7 @@ import EmployeeDetail from './pages/hr/EmployeeDetail'
 import Alerts         from './pages/hr/Alerts'
 import Candidates     from './pages/hr/Candidates'
 
-// Employee / candidate onboarding routes
+//candidate onboarding routes
 import EmployeeLayout     from './pages/candidate/EmployeeLayout'
 import Welcome            from './pages/candidate/Welcome'
 import ProfileCompletion  from './pages/candidate/ProfileCompletion'
@@ -20,12 +20,14 @@ import TermsAndConditions from './pages/candidate/TermsAndConditions'
 import Documents          from './pages/candidate/Documents'
 import Checklist          from './pages/candidate/Checklist'
 import PolicyBot          from './pages/candidate/PolicyBot'
+import OnboardingReview   from './pages/candidate/OnboardingReview'
 
 // IT Admin routes
 import ITLayout      from './pages/it/ITLayout'
 import Provisioning  from './pages/it/Provisioning'
 import AdminSetup    from './pages/it/AdminSetup'
 import PolicyConfig  from './pages/it/PolicyConfig'
+import ITAlerts from './pages/it/ITAlerts'
 
 export default function App() {
   return (
@@ -70,6 +72,7 @@ export default function App() {
           <Route path="documents"  element={<Documents />} />
           <Route path="checklist"  element={<Checklist />} />
           <Route path="policy"     element={<PolicyBot />} />
+           <Route path="review"   element={<OnboardingReview />} />
         </Route>
 
         {/* ── IT Admin Portal ──────────────────────────── */}

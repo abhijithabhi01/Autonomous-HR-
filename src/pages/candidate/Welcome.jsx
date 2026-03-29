@@ -24,6 +24,8 @@ export default function Welcome() {
   const progress       = emp?.onboarding_progress ?? 0
   const completedTasks = checklist.filter(c => c.completed).length
   const pendingDocs    = docs.filter(d => d.status === 'pending').length
+  const idCardItem     = checklist.find(i => i.title === 'ID Card Issued')
+  const isSubmitted    = idCardItem?.completed ?? false
 
   if (empLoading) {
     return (
@@ -82,11 +84,35 @@ export default function Welcome() {
 
       {/* Bottom grid: stacks on mobile */}
       <div className="grid  gap-4 sm:gap-6">
-        {/* Next steps */}
+        {/* Next steps / Completion */}
         <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-4 sm:p-5 animate-slide-up opacity-0"
           style={{ animationDelay: '100ms', animationFillMode: 'forwards' }}>
-          <h2 className="font-display font-semibold text-white mb-4 text-sm sm:text-base">Next Steps</h2>
-          <div className="space-y-2 sm:space-y-3">
+
+          {isSubmitted ? (
+            <div className="flex flex-col items-center text-center py-4 sm:py-6 gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-2xl">
+                🎉
+              </div>
+              <div>
+                <h2 className="font-display font-bold text-white text-base sm:text-lg mb-1">
+                  You've completed your onboarding!
+                </h2>
+                <p className="text-slate-400 text-sm max-w-sm mx-auto">
+                  All steps are done and your profile has been submitted. Have questions about company policies or what comes next?
+                </p>
+              </div>
+              <button
+                onClick={() => navigate('/onboarding/policy')}
+                className="inline-flex items-center gap-2.5 px-5 py-3 rounded-xl bg-teal-500/10 border border-teal-500/20 hover:bg-teal-500/20 hover:border-teal-500/35 text-teal-400 font-semibold text-sm transition-all duration-200 group">
+                <span className="text-lg">💬</span>
+                Ask the HR Policy Bot
+                <span className="group-hover:translate-x-0.5 transition-transform">→</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              <h2 className="font-display font-semibold text-white mb-4 text-sm sm:text-base">Next Steps</h2>
+              <div className="space-y-2 sm:space-y-3">
             {[
               {
                 icon: '📄', title: 'Upload Documents',
@@ -128,6 +154,8 @@ export default function Welcome() {
               </button>
             ))}
           </div>
+            </>
+          )}
         </div>
 
 

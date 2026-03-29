@@ -39,15 +39,6 @@ const DOC_TYPES = [
     ],
   },
   {
-    type: 'employment_letter', label: 'Offer Letter', icon: '📝', required: true,
-    fields: [
-      { key: 'employee_name', label: 'Candidate Name' },
-      { key: 'company',       label: 'Company' },
-      { key: 'position',      label: 'Position / Role' },
-      { key: 'start_date',    label: 'Joining Date' },
-    ],
-  },
-  {
     type: 'bank_details', label: 'Bank Account Details', icon: '🏦', required: false,
     fields: [
       { key: 'account_holder',  label: 'Account Holder' },

@@ -5,10 +5,9 @@ import { useAlerts, useCandidates, useRealtimeSync } from '../../hooks/useData'
 import Avatar from '../../components/shared/Avatar'
 
 const NAV = [
-  { to: '/hr',             label: 'Dashboard',  icon: '⬡', exact: true },
-  { to: '/hr/employees',   label: 'Employees',  icon: '◉' },
-  { to: '/hr/candidates',  label: 'Candidates', icon: '◈', candidateBadge: true },
-  { to: '/hr/alerts',      label: 'Alerts',     icon: '◎', badge: true },
+  { to: '/hr',            label: 'Dashboard',  icon: '⬡', exact: true },
+  { to: '/hr/candidates', label: 'Candidates', icon: '◈', candidateBadge: true },
+  { to: '/hr/alerts',     label: 'Alerts',     icon: '◎', badge: true },
 ]
 
 // ── Sign-out confirm modal ────────────────────────────────────

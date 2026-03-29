@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { useCompleteChecklistByTitle } from '../../hooks/useData'   // ← was commented out
+import { useCompleteChecklistByTitle } from '../../hooks/useData'
 import toast from 'react-hot-toast'
 
-// Firebase imports that were missing
+// Firebase imports
 import { db } from '../../lib/firebase'
 import {
   doc, getDoc, getDocs, collection,
@@ -12,12 +12,13 @@ import {
 } from 'firebase/firestore'
 
 export default function ProfileCompletion() {
-  const navigate = useNavigate()
-  const { user } = useAuth()
+  const navigate        = useNavigate()
+  const { user }        = useAuth()
   const completeByTitle = useCompleteChecklistByTitle()
-  const [loading, setLoading] = useState(false)
-  const [loadingProfile, setLoadingProfile] = useState(true)
-  const [uploading, setUploading] = useState(false)
+
+  const [loading,         setLoading]         = useState(false)
+  const [loadingProfile,  setLoadingProfile]  = useState(true)
+  const [uploading,       setUploading]       = useState(false)
 
   const [form, setForm] = useState({
     full_name: '',
@@ -32,32 +33,28 @@ export default function ProfileCompletion() {
   const [photoPreview, setPhotoPreview] = useState(null)
 
   useEffect(() => {
-    console.log('User context:', user)
     if (user && !user?.candidate_id && !user?.employee_id) {
       console.error('No candidate_id or employee_id found in user object!')
     }
   }, [user])
 
-  // Load existing profile data
+  // Load existing profile
   useEffect(() => {
     const loadProfile = async () => {
-      if (!user?.candidate_id && !user?.employee_id) {
-        setLoadingProfile(false)
-        return
-      }
+      if (!user?.candidate_id && !user?.employee_id) { setLoadingProfile(false); return }
       const candidateId = user.candidate_id || user.employee_id
       try {
         const snap = await getDoc(doc(db, 'candidates', candidateId))
         if (!snap.exists()) { setLoadingProfile(false); return }
         const data = snap.data()
         setForm({
-          full_name: data.full_name || '',
-          phone: data.phone || '',
-          address: data.address || '',
-          emergency_contact_name: data.emergency_contact_name || '',
+          full_name:               data.full_name               || '',
+          phone:                   data.phone                   || '',
+          address:                 data.address                 || '',
+          emergency_contact_name:  data.emergency_contact_name  || '',
           emergency_contact_phone: data.emergency_contact_phone || '',
-          date_of_birth: data.date_of_birth || '',
-          profile_photo_url: data.profile_photo_url || null,
+          date_of_birth:           data.date_of_birth           || '',
+          profile_photo_url:       data.profile_photo_url       || null,
         })
         if (data.profile_photo_url) setPhotoPreview(data.profile_photo_url)
       } catch (err) {
@@ -77,22 +74,23 @@ export default function ProfileCompletion() {
 
     setUploading(true)
     try {
+      // Show preview immediately
       const reader = new FileReader()
       reader.onload = (ev) => setPhotoPreview(ev.target.result)
       reader.readAsDataURL(file)
 
-      // Upload via backend — keeps Firebase Storage creds server-side
+      // Upload via backend
       const base64 = await new Promise((resolve, reject) => {
         const r = new FileReader()
-        r.onload = e => resolve(e.target.result.split(',')[1])
+        r.onload  = e => resolve(e.target.result.split(',')[1])
         r.onerror = () => reject(new Error('Failed to read file'))
         r.readAsDataURL(file)
       })
-      const base = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+      const base      = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
       const uploadRes = await fetch(base ? `${base}/api/documents/upload` : '/api/documents/upload', {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body:    JSON.stringify({
           candidateId: user?.candidate_id || 'profile',
           docType: 'profile_photo',
           base64, mimeType: file.type, fileName: file.name,
@@ -100,8 +98,7 @@ export default function ProfileCompletion() {
       })
       const uploadData = await uploadRes.json()
       if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed')
-      const publicUrl = uploadData.download_url
-      setForm(f => ({ ...f, profile_photo_url: publicUrl }))
+      setForm(f => ({ ...f, profile_photo_url: uploadData.download_url }))
       toast.success('Photo uploaded!')
     } catch (err) {
       console.error('Photo upload error:', err)
@@ -114,36 +111,27 @@ export default function ProfileCompletion() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     const phoneRegex = /^[6-9]\d{9}$/
-    if (!form.full_name?.trim()) { toast.error('Please enter your full name'); return }
-    if (!form.address?.trim()) { toast.error('Please enter your address'); return }
-    if (!form.date_of_birth) { toast.error('Please enter your date of birth'); return }
+
+    if (!form.full_name?.trim())   { toast.error('Please enter your full name'); return }
+    if (!form.address?.trim())     { toast.error('Please enter your address'); return }
+    if (!form.date_of_birth)       { toast.error('Please enter your date of birth'); return }
 
     const phone = form.phone.trim()
+    if (!phone)                    { toast.error('Please enter your phone number'); return }
+    if (!phoneRegex.test(phone))   { toast.error('Enter a valid 10-digit mobile number'); return }
 
-    if (!phone) {
-      toast.error('Please enter your phone number')
-      return
+    if (form.emergency_contact_phone?.trim()) {
+      if (!phoneRegex.test(form.emergency_contact_phone.trim())) {
+        toast.error('Enter a valid emergency contact number')
+        return
+      }
     }
 
-    if (!phoneRegex.test(phone)) {
-      toast.error('Enter a valid 10-digit mobile number')
-      return
-    }
-if (form.emergency_contact_phone?.trim()) {
-  const emergencyPhone = form.emergency_contact_phone.trim()
-
-  if (!phoneRegex.test(emergencyPhone)) {
-    toast.error('Enter a valid emergency contact number')
-    return
-  }
-}
     let candidateId = user?.candidate_id || user?.employee_id
 
-    // Fallback: look up by email if id is missing/corrupted
+    // Fallback: look up by email if id missing
     if (!candidateId || candidateId === 'null' || candidateId === 'undefined') {
-      console.log('No valid candidate_id, trying to find by email:', user?.email)
       try {
-        // Try personal_email first, then work_email
         let qSnap = await getDocs(query(
           collection(db, 'candidates'), where('personal_email', '==', user?.email)
         ))
@@ -164,67 +152,30 @@ if (form.emergency_contact_phone?.trim()) {
 
     setLoading(true)
     try {
-      const updateData = {
-        full_name: form.full_name.trim(),
-        phone: form.phone.trim(),
-        address: form.address.trim(),
-        emergency_contact_name: form.emergency_contact_name?.trim() || null,
+      await updateDoc(doc(db, 'candidates', candidateId), {
+        full_name:               form.full_name.trim(),
+        phone:                   form.phone.trim(),
+        address:                 form.address.trim(),
+        emergency_contact_name:  form.emergency_contact_name?.trim()  || null,
         emergency_contact_phone: form.emergency_contact_phone?.trim() || null,
-        date_of_birth: form.date_of_birth,
-        profile_photo_url: form.profile_photo_url || null,
-        profile_completed: true,
-      }
-      await updateDoc(doc(db, 'candidates', candidateId), updateData)
+        date_of_birth:           form.date_of_birth,
+        profile_photo_url:       form.profile_photo_url || null,
+        profile_completed:       true,
+      })
       toast.success('Profile saved!')
 
-      // 1. Mark Profile Completed in checklist
+      // Mark "Profile Completed" in checklist
       completeByTitle.mutate({
         candidateId,
-        title: 'Profile Completed',
+        title:       'Profile Completed',
         description: 'Personal profile and photo uploaded',
-        category: 'hr',
-        sort_order: 0,
+        category:    'hr',
+        sort_order:  0,
       })
 
-      // 2. Generate ID card HTML and send by email (non-blocking)
-      ;(async () => {
-        try {
-          const snap  = await getDoc(doc(db, 'candidates', candidateId))
-          const cData = snap.exists() ? snap.data() : {}
-          const base  = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
-          const idRes = await fetch(`${base}/api/sendmail/idcard`, {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              toEmail:    cData.personal_email || cData.login_email,
-              toName:     form.full_name || cData.full_name,
-              candidateId,
-              position:   cData.position   || '',
-              department: cData.department || '',
-              workEmail:  cData.work_email || '',
-              employeeId: candidateId.slice(-6).toUpperCase(),
-              photoUrl:   form.profile_photo_url || cData.profile_photo_url || null,
-              startDate:  cData.start_date || '',
-            }),
-          })
-          if (idRes.ok) {
-            toast.success('ID card sent to your email! 🪪')
-            // Mark ID Card Issued in checklist
-            completeByTitle.mutate({
-              candidateId,
-              title: 'ID Card Issued',
-              description: 'Company ID card generated and sent',
-              category: 'hr',
-              sort_order: 7,
-            })
-          } else {
-            const err = await idRes.json().catch(() => ({}))
-            console.warn('[profile] ID card email failed:', err.error || idRes.status)
-          }
-        } catch (idErr) {
-          console.warn('[profile] ID card generation error:', idErr.message)
-        }
-      })()
+      // NOTE: ID card is NOT sent here.
+      // It is sent exclusively on Final Submit (POST /api/candidates/:id/final-submit)
+      // so that the card only goes out when the candidate has fully completed onboarding.
 
       navigate('/onboarding/terms')
     } catch (err) {
@@ -251,6 +202,7 @@ if (form.emergency_contact_phone?.trim()) {
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-6">
+
           {/* Profile Photo */}
           <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-6 animate-slide-up opacity-0"
             style={{ animationDelay: '100ms', animationFillMode: 'forwards' }}>
@@ -273,7 +225,7 @@ if (form.emergency_contact_phone?.trim()) {
                   <span>📤</span><span>Upload Photo</span>
                   <input type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" disabled={uploading} />
                 </label>
-                <p className="text-xs text-slate-500 mt-2">JPG, PNG . Max 2MB.</p>
+                <p className="text-xs text-slate-500 mt-2">JPG, PNG · Max 2MB</p>
               </div>
             </div>
           </div>
@@ -300,10 +252,10 @@ if (form.emergency_contact_phone?.trim()) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Phone Number *</label>
-                <input type="tel" value={form.phone}  maxLength={10}
+                <input type="tel" value={form.phone} maxLength={10}
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                   className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  placeholder="Phone Number" required />
+                  placeholder="10-digit mobile number" required />
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Address *</label>
@@ -319,7 +271,7 @@ if (form.emergency_contact_phone?.trim()) {
           {/* Emergency Contact */}
           <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-6 animate-slide-up opacity-0"
             style={{ animationDelay: '300ms', animationFillMode: 'forwards' }}>
-            <h2 className="font-display font-semibold text-white text-sm mb-4">Emergency Contact (Optional)</h2>
+            <h2 className="font-display font-semibold text-white text-sm mb-4">Emergency Contact <span className="text-slate-600 font-normal">(Optional)</span></h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Contact Name</label>
@@ -330,15 +282,15 @@ if (form.emergency_contact_phone?.trim()) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Contact Phone</label>
-                <input type="tel" value={form.emergency_contact_phone}  maxLength={10}
+                <input type="tel" value={form.emergency_contact_phone} maxLength={10}
                   onChange={e => setForm(f => ({ ...f, emergency_contact_phone: e.target.value }))}
                   className="w-full bg-[#080C18] border border-white/[0.08] rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500/50 transition-all"
-                  placeholder="Phone Number" />
+                  placeholder="10-digit number" />
               </div>
             </div>
           </div>
 
-          {/* Submit */}
+          {/* Actions */}
           <div className="flex justify-end gap-3 animate-slide-up opacity-0"
             style={{ animationDelay: '400ms', animationFillMode: 'forwards' }}>
             <button type="button" onClick={() => navigate('/onboarding')} disabled={loading}

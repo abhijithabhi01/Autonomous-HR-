@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
-import { useProvisioningRequests, useCleanupChecklistTitles } from '../../hooks/useData'
+import { useProvisioningRequests, useCleanupChecklistTitles, useITReadyAlerts } from '../../hooks/useData'
 
 const NAV = [
-  { to: '/it',               label: 'Provisioning',  icon: '🖥️', exact: true },
-  { to: '/it/completed',     label: 'Completed',     icon: '✅' },
-  { to: '/it/setup',         label: 'Admin Setup',   icon: '⚙️' },
-  { to: '/it/policy-config', label: 'Policy Bot',    icon: '🤖' },
+  { to: '/it',           label: 'Active Requests', icon: '🖥️', exact: true },
+  { to: '/it/completed', label: 'Completed',        icon: '✅' },
+  { to: '/it/alerts',    label: 'Alerts',           icon: '🔔' },
+  { to: '/it/admin',     label: 'Admin Setup',      icon: '⚙️' },
+  { to: '/it/policy',    label: 'Policy Config',    icon: '📄' },
 ]
 
 function SignOutModal({ user, onConfirm, onCancel, loading }) {
@@ -48,9 +49,17 @@ export default function ITLayout() {
   const [signingOut, setSigningOut]   = useState(false)
   const [drawerOpen, setDrawerOpen]   = useState(false)
 
-  const { data: requests = [] } = useProvisioningRequests()
-  const pendingCount = requests.filter(r => r.status === 'pending').length
+  const { data: requests = [] }    = useProvisioningRequests()
+  const { data: itAlerts = [] }    = useITReadyAlerts()
   const cleanup = useCleanupChecklistTitles()
+
+  // Provisioning queue badge (pending + in-progress)
+  const pendingCount  = requests.filter(r => r.status === 'pending').length
+  const inProgCount   = requests.filter(r => r.status === 'in_progress').length
+  const queueCount    = pendingCount + inProgCount
+
+  // IT Alerts badge — candidates at 100% waiting for laptop/email/access
+  const itAlertCount  = itAlerts.filter(a => a.missing_items.length > 0).length
 
   useEffect(() => {
     cleanup.mutate(['Team Introduction', 'Day 7 Check-in', 'Wellbeing Check-in'])
@@ -96,16 +105,36 @@ export default function ITLayout() {
           </button>
         </div>
 
-        {/* Pending badge */}
-        {pendingCount > 0 && (
-          <div className="mx-3 my-3 p-3 rounded-xl bg-amber-500/5 border border-amber-500/15 flex items-center gap-3">
-            <span className="text-xl">🔔</span>
-            <div>
-              <p className="text-xs font-bold text-amber-300">{pendingCount} Pending</p>
-              <p className="text-[10px] text-slate-500">provisioning requests</p>
+        {/* Alert banners */}
+        <div className="px-3 pt-3 space-y-2">
+          {/* Provisioning queue badge */}
+          {queueCount > 0 && (
+            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15 flex items-center gap-3">
+              <span className="text-xl">🔔</span>
+              <div>
+                <p className="text-xs font-bold text-amber-300">
+                  {pendingCount > 0 ? `${pendingCount} Pending` : ''}
+                  {pendingCount > 0 && inProgCount > 0 ? ' · ' : ''}
+                  {inProgCount > 0 ? `${inProgCount} In Progress` : ''}
+                </p>
+                <p className="text-[10px] text-slate-500">provisioning requests</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* IT Ready alerts badge */}
+          {itAlertCount > 0 && (
+            <div className="p-3 rounded-xl bg-cyan-500/5 border border-cyan-500/15 flex items-center gap-3">
+              <span className="text-xl">⚡</span>
+              <div>
+                <p className="text-xs font-bold text-cyan-300">
+                  {itAlertCount} candidate{itAlertCount !== 1 ? 's' : ''} ready
+                </p>
+                <p className="text-[10px] text-slate-500">laptop · email · access needed</p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
@@ -119,9 +148,18 @@ export default function ITLayout() {
                   : 'text-slate-500 hover:text-slate-200 hover:bg-white/[0.04]'}`}>
               <span className="w-5 text-center">{item.icon}</span>
               <span className="flex-1">{item.label}</span>
-              {item.to === '/it' && pendingCount > 0 && (
+
+              {/* Badge: Active Requests */}
+              {item.to === '/it' && queueCount > 0 && (
                 <span className="bg-amber-500 text-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center font-bold">
-                  {pendingCount}
+                  {queueCount}
+                </span>
+              )}
+
+              {/* Badge: Alerts */}
+              {item.to === '/it/alerts' && itAlertCount > 0 && (
+                <span className="bg-cyan-500 text-black text-[10px] min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center font-bold">
+                  {itAlertCount}
                 </span>
               )}
             </NavLink>
@@ -159,9 +197,9 @@ export default function ITLayout() {
             </svg>
           </button>
           <span className="font-display font-bold text-white text-sm">IT Admin</span>
-          {pendingCount > 0 && (
+          {(queueCount + itAlertCount) > 0 && (
             <span className="ml-auto bg-amber-500 text-black text-[10px] min-w-[20px] h-5 px-1.5 rounded-full flex items-center justify-center font-bold">
-              {pendingCount}
+              {queueCount + itAlertCount}
             </span>
           )}
         </header>

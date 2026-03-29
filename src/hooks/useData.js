@@ -1,9 +1,5 @@
-// src/hooks/useData.js
-// All data operations go through the backend API.
-// No Firebase SDK imports — Firebase lives entirely on the backend.
-
 import { useEffect, useRef } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useQueries } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 
 // ── API base URL ──────────────────────────────────────────────
@@ -96,7 +92,6 @@ export function useAddCandidate() {
         `✅ ${data.full_name} added!\n\n` +
         `🔑 Login: ${data.loginEmail}\n` +
         `🔐 Password: ${data.tempPassword}\n` +
-        `📧 Work email: ${data.workEmail}\n\n` +
         `${authLine}\n${emailLine}`,
         {
           duration: 20000,
@@ -201,7 +196,7 @@ export function useUploadDocument() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['documents', data.candidate_id] })
-      toast.success('Document uploaded successfully')
+      // toast.success('Document uploaded successfully')
     },
     onError: (err) => toast.error(err.message),
   })
@@ -292,6 +287,97 @@ export function useResolveAlert() {
     },
     onError: (err) => toast.error(err.message),
   })
+}
+
+// ── Computed expiry alerts (mirrors Alerts.jsx logic) ────────
+
+export function useExpiryAlerts() {
+  const { data: candidates = [], isLoading: candLoading } = useCandidates()
+
+  const docResults = useQueries({
+    queries: candidates.map(c => ({
+      queryKey: ['documents', c.id],
+      queryFn:  async () => {
+        const docs = await apiFetch(`/api/documents/${c.id}`)
+        return docs.map(addExpiryStatus)
+      },
+      enabled: !!c.id,
+    })),
+  })
+
+  const isLoading = candLoading || docResults.some(r => r.isLoading)
+
+  const expiryAlerts = candidates.flatMap((c, i) => {
+    const docs = docResults[i]?.data || []
+    return docs
+      .filter(d => {
+        if (!d.expiry_date) return false
+        const days = Math.ceil((new Date(d.expiry_date) - new Date()) / 86400000)
+        return days <= 90
+      })
+      .map(doc => {
+        const days     = Math.ceil((new Date(doc.expiry_date) - new Date()) / 86400000)
+        const severity = days < 0 ? 'high' : days < 30 ? 'high' : 'medium'
+        const docLabel = doc.label && doc.label !== doc.doc_type
+          ? doc.label
+          : doc.doc_type
+            ? doc.doc_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+            : 'Document'
+        const message = days < 0
+          ? `${docLabel} expired ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`
+          : `${docLabel} expires in ${days} day${days === 1 ? '' : 's'}`
+        return {
+          id:          `doc_${c.id}_${doc.id}`,
+          type:        'expiry',
+          severity,
+          person_name: c.full_name,
+          message,
+        }
+      })
+  })
+
+  return { data: expiryAlerts, isLoading }
+}
+
+
+// ── Deadline alerts: start_date ≤ 2 days away & onboarding incomplete ──
+// start_date in this system is the LAST DATE to submit documents.
+// Raises alerts when: days_remaining ≤ 2 AND progress < 100.
+// Also raises overdue alerts when deadline has already passed.
+export function useDeadlineAlerts() {
+  const { data: candidates = [], isLoading } = useCandidates()
+
+  const deadlineAlerts = candidates
+    .filter(c => c.start_date && (c.onboarding_progress ?? 0) < 100)
+    .flatMap(c => {
+      const daysLeft = Math.ceil((new Date(c.start_date) - new Date()) / 86400000)
+      if (daysLeft > 2) return []   // plenty of time — no alert
+
+      const isOverdue  = daysLeft < 0
+      const isToday    = daysLeft === 0
+      const severity   = isOverdue || isToday ? 'high' : 'high'  // always high within 2 days
+      const progress   = c.onboarding_progress ?? 0
+
+      const message = isOverdue
+        ? `Onboarding deadline passed ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? '' : 's'} ago — only ${progress}% complete`
+        : isToday
+          ? `Onboarding deadline is TODAY — only ${progress}% complete`
+          : `Onboarding deadline in ${daysLeft} day${daysLeft === 1 ? '' : 's'} — only ${progress}% complete`
+
+      return [{
+        id:          `deadline_${c.id}`,
+        type:        'deadline',
+        severity,
+        person_name: c.full_name,
+        candidate_id: c.id,
+        message,
+        daysLeft,
+        progress,
+        start_date:  c.start_date,
+      }]
+    })
+
+  return { data: deadlineAlerts, isLoading }
 }
 
 // ============================================================

@@ -5,6 +5,7 @@ import StatusBadge from '../../components/shared/StatusBadge'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
 import { useCandidate, useEmployee, useDocuments, useChecklist, useUploadDocument, useCompleteChecklistByTitle } from '../../hooks/useData'
+import { sendExpiryNotificationEmail, resolveDocLabel } from './Alerts'
 import toast from 'react-hot-toast'
 
 // Calls backend /api/documents/verify
@@ -447,9 +448,32 @@ export default function EmployeeDetail() {
   const { data: docs  = [], isLoading: docsLoading  } = useDocuments(candidateId)
   const { data: items = [], isLoading: checkLoading } = useChecklist(candidateId)
 
-  const [showUpload,  setShowUpload]  = useState(false)
-  const [hrActPending, setHrActPending] = useState({})
+  const [showUpload,    setShowUpload]    = useState(false)
+  const [hrActPending,  setHrActPending]  = useState({})
+  const [notifyingDocId, setNotifyingDocId] = useState(null)
   const completeByTitle = useCompleteChecklistByTitle()
+
+  const handleNotifyDoc = async (doc) => {
+    const target  = person
+    const toEmail = target.personal_email || target.login_email
+    if (!toEmail) { toast.error('No email address on file for this person'); return }
+    const days = doc.expiry_date
+      ? Math.ceil((new Date(doc.expiry_date) - new Date()) / 86400000)
+      : null
+    if (days === null) { toast.error('This document has no expiry date'); return }
+    setNotifyingDocId(doc.id)
+    try {
+      await sendExpiryNotificationEmail({ candidate: target, doc, daysUntilExpiry: days })
+      toast.success(`📧 Expiry notice sent to ${target.full_name}`, {
+        duration: 5000,
+        style: { background: '#0C1120', color: '#E2E8F0', border: '1px solid rgba(20,184,166,0.3)', borderRadius: '12px' },
+      })
+    } catch (err) {
+      toast.error(`Failed to send: ${err.message}`)
+    } finally {
+      setNotifyingDocId(null)
+    }
+  }
 
   const hrConfirm = async (title, description, category, sort_order) => {
     if (!candidateId) return
@@ -590,15 +614,20 @@ export default function EmployeeDetail() {
               )
               : (
                 <div className="divide-y divide-white/[0.04]">
-                  {docs.map(doc => (
+                  {docs.map(doc => {
+                    const daysLeft = doc.expiry_date
+                      ? Math.ceil((new Date(doc.expiry_date) - new Date()) / 86400000)
+                      : null
+                    const isExpiringSoon = daysLeft !== null && daysLeft <= 90
+                    return (
                     <div key={doc.id} className="px-4 sm:px-5 py-3.5 flex items-center gap-3">
                       <span className="text-lg flex-shrink-0">{doc.icon}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm text-slate-200 font-medium truncate">{doc.label}</p>
+                        <p className="text-sm text-slate-200 font-medium truncate">{resolveDocLabel(doc)}</p>
                         {doc.expiry_date && (
-                          <p className={`text-xs mt-0.5 ${doc.days_until_expiry < 60 ? 'text-amber-400' : 'text-slate-500'}`}>
-                            Exp. {doc.expiry_date}
-                            {doc.days_until_expiry < 60 && ` · ⚠️ ${doc.days_until_expiry}d`}
+                          <p className={`text-xs mt-0.5 ${daysLeft !== null && daysLeft < 60 ? 'text-amber-400' : 'text-slate-500'}`}>
+                            Exp. {new Date(doc.expiry_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {daysLeft !== null && daysLeft < 60 && ` · ⚠️ ${daysLeft < 0 ? `${Math.abs(daysLeft)}d ago` : `${daysLeft}d left`}`}
                           </p>
                         )}
                         {/* Extracted data preview */}
@@ -614,13 +643,25 @@ export default function EmployeeDetail() {
                               ))}
                           </div>
                         )}
+                        {/* Notify button — only for docs expiring within 90 days */}
+                        {isExpiringSoon && (
+                          <button
+                            onClick={() => handleNotifyDoc(doc)}
+                            disabled={notifyingDocId === doc.id}
+                            className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[11px] font-semibold hover:bg-indigo-500/20 transition-all disabled:opacity-40"
+                          >
+                            {notifyingDocId === doc.id
+                              ? <><span className="w-2.5 h-2.5 border-2 border-indigo-400/30 border-t-indigo-400 rounded-full animate-spin inline-block" />Sending…</>
+                              : '✉️ Send Expiry Notice'}
+                          </button>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                         <span className="text-sm">{DOC_STATUS_ICON[doc.status] || '⏳'}</span>
                         <StatusBadge status={doc.status} />
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               )}
         </div>

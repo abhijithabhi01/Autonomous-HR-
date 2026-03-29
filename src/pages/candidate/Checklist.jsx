@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import {
   useChecklist,
   useMarkOnboardingComplete,
   useCompleteChecklistByTitle,
-  useFinalSubmitOnboarding,
 } from '../../hooks/useData'
 import ProgressBar from '../../components/shared/ProgressBar'
 import LoadingSpinner from '../../components/shared/LoadingSpinner'
@@ -119,67 +119,32 @@ function PolicyTrainingModal({ isCompleted, onClose, onMarkDone }) {
   )
 }
 
-// ── Final Submit Confirm Modal ─────────────────────────────────
-function FinalSubmitModal({ onConfirm, onCancel, submitting }) {
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-[#0D1120] border border-white/[0.08] rounded-2xl w-full max-w-sm shadow-2xl"
-        style={{ animation: 'slideUp 0.2s ease-out both' }}>
-        <div className="p-6 text-center">
-          <div className="text-5xl mb-3">🚀</div>
-          <h2 className="font-display font-bold text-white text-lg mb-2">Submit Onboarding?</h2>
-          <p className="text-slate-400 text-sm leading-relaxed">
-            This will finalise your onboarding. Your <strong className="text-white">ID card</strong> and{' '}
-            <strong className="text-white">work email details</strong> will be sent to your personal email.
-          </p>
-        </div>
-        <div className="flex gap-3 px-6 pb-6">
-          <button onClick={onCancel} disabled={submitting}
-            className="flex-1 py-2.5 rounded-xl text-sm font-medium text-slate-400 border border-white/[0.08] hover:bg-white/[0.04] hover:text-slate-200 transition-all disabled:opacity-50">
-            Not yet
-          </button>
-          <button onClick={onConfirm} disabled={submitting}
-            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white bg-teal-600 hover:bg-teal-500 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-            style={{ boxShadow: '0 0 16px rgba(20,184,166,0.3)' }}>
-            {submitting
-              ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              : '✅ Confirm & Submit'}
-          </button>
-        </div>
-      </div>
-      <style>{`@keyframes slideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
-    </div>
-  )
-}
-
 // ── Main Component ────────────────────────────────────────────
 export default function Checklist() {
+  const navigate        = useNavigate()
   const { user }        = useAuth()
   const { data: items = [], isLoading } = useChecklist(user?.candidate_id)
   const markComplete    = useMarkOnboardingComplete()
   const completeByTitle = useCompleteChecklistByTitle()
-  const finalSubmit     = useFinalSubmitOnboarding()
   const markedRef       = useRef(false)
 
-  const [policyModalOpen,      setPolicyModalOpen]      = useState(false)
-  const [submitModalOpen,      setSubmitModalOpen]      = useState(false)
-  const [submitting,           setSubmitting]           = useState(false)
-  // Track whether this candidate has already submitted (from ID Card being marked)
-  const [locallySubmitted,     setLocallySubmitted]     = useState(false)
+  const [policyModalOpen, setPolicyModalOpen] = useState(false)
 
   const completed  = items.filter(i => i.completed).length
   const pct        = items.length > 0 ? Math.round((completed / items.length) * 100) : 0
   const policyItem = items.find(i => i.title === 'Policy Training')
   const policyDone = policyItem?.completed ?? false
-  const idCardItem = items.find(i => i.title === 'ID Card Issued')
 
-  // Already submitted if ID Card Issued is ticked (set server-side on final-submit)
-  const alreadySubmitted = locallySubmitted || (idCardItem?.completed ?? false)
+  // ID Card Issued = final submit already done (set server-side)
+  const idCardItem      = items.find(i => i.title === 'ID Card Issued')
+  const alreadySubmitted = idCardItem?.completed ?? false
 
-  // Whether all SUBMIT_REQUIRED items are done
-  const canSubmit = SUBMIT_REQUIRED.every(title => items.find(i => i.title === title)?.completed)
+  // Whether all SUBMIT_REQUIRED items are done → show "Ready to Submit" CTA
+  const canSubmit = SUBMIT_REQUIRED.every(
+    title => items.find(i => i.title === title)?.completed
+  )
 
-  // Auto-mark complete at 100% (when IT also finishes provisioning)
+  // Auto-mark onboarding complete at 100%
   useEffect(() => {
     if (pct === 100 && !markedRef.current && user?.candidate_id) {
       markedRef.current = true
@@ -194,35 +159,19 @@ export default function Checklist() {
   const handlePolicyMarkDone = () =>
     new Promise((resolve) => {
       completeByTitle.mutate(
-        { candidateId: user.candidate_id, title: 'Policy Training',
-          description: 'Mandatory compliance and policy training', category: 'training', sort_order: 7 },
-        { onSuccess: () => { toast.success('Policy training completed! 🎓'); resolve() },
-          onError:   () => resolve() }
+        {
+          candidateId: user.candidate_id,
+          title: 'Policy Training',
+          description: 'Mandatory compliance and policy training',
+          category: 'training',
+          sort_order: 7,
+        },
+        {
+          onSuccess: () => { toast.success('Policy training completed! 🎓'); resolve() },
+          onError:   () => resolve(),
+        }
       )
     })
-
-  const handleFinalSubmit = async () => {
-    setSubmitting(true)
-    try {
-      const result = await finalSubmit.mutateAsync(user.candidate_id)
-      setLocallySubmitted(true)
-      setSubmitModalOpen(false)
-      if (result.alreadySubmitted) {
-        toast('Already submitted — your ID card was sent earlier.', { icon: 'ℹ️' })
-      } else {
-        toast.success(
-          result.idCardSent
-            ? '🎉 Submitted! Your ID card has been emailed to you.'
-            : '🎉 Submitted! HR will send your ID card shortly.',
-          { duration: 6000 }
-        )
-      }
-    } catch (err) {
-      toast.error(err.message || 'Submission failed — please try again.')
-    } finally {
-      setSubmitting(false)
-    }
-  }
 
   const grouped = items.reduce((acc, item) => {
     if (!acc[item.category]) acc[item.category] = []
@@ -245,14 +194,16 @@ export default function Checklist() {
       <div className="mb-6 animate-fade-in">
         <h1 className="text-xl sm:text-2xl font-display font-bold text-white">Onboarding Checklist</h1>
         <p className="text-slate-500 text-sm mt-1">
-          Complete all steps, then click <strong className="text-teal-400">Final Submit</strong> to finalise your onboarding
+          Complete all steps to unlock your <strong className="text-teal-400">Final Submit</strong>
         </p>
       </div>
 
       {/* Progress card */}
       <div className="rounded-2xl border border-white/[0.05] bg-[#0C1A1D] p-5 sm:p-6 mb-6 animate-slide-up opacity-0"
-        style={{ animationFillMode: 'forwards',
-          backgroundImage: 'linear-gradient(135deg, rgba(20,184,166,0.04) 0%, transparent 55%)' }}>
+        style={{
+          animationFillMode: 'forwards',
+          backgroundImage: 'linear-gradient(135deg, rgba(20,184,166,0.04) 0%, transparent 55%)',
+        }}>
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-sm font-semibold text-slate-300">Overall Progress</p>
@@ -264,28 +215,28 @@ export default function Checklist() {
         </div>
         <ProgressBar value={pct} showLabel={false} size="lg" />
 
-        {/* ── Final Submit CTA ─────────────────────────────── */}
-        {canSubmit && !alreadySubmitted && pct < 100 && (
+        {/* ── Ready to submit — redirect to OnboardingReview ── */}
+        {canSubmit && !alreadySubmitted && (
           <div className="mt-5 rounded-2xl border border-teal-500/25 bg-teal-500/[0.06] overflow-hidden">
             <div className="h-1 w-full bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400" />
             <div className="p-5 flex flex-col sm:flex-row items-center gap-4">
               <div className="flex-1 text-center sm:text-left">
                 <p className="font-display font-bold text-white text-base">Ready to Submit! 🎉</p>
                 <p className="text-slate-400 text-xs mt-1">
-                  All your tasks are done. Click submit to finalise — your ID card and work email will be sent to you.
+                  Review your profile, contract and documents, then click Final Submit.
                 </p>
               </div>
               <button
-                onClick={() => setSubmitModalOpen(true)}
+                onClick={() => navigate('/onboarding/review')}
                 className="flex-shrink-0 px-6 py-3 bg-teal-600 hover:bg-teal-500 text-white text-sm font-bold rounded-xl transition-all whitespace-nowrap"
                 style={{ boxShadow: '0 0 20px rgba(20,184,166,0.4)' }}>
-                🚀 Final Submit
+                Review & Submit →
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Submitted — waiting for IT ───────────────────── */}
+        {/* ── Already submitted — waiting for IT ────────────── */}
         {alreadySubmitted && pct < 100 && (
           <div className="mt-5 rounded-2xl border border-indigo-500/20 bg-indigo-500/[0.05] p-4 flex items-center gap-3">
             <span className="text-2xl flex-shrink-0">⏳</span>
@@ -298,7 +249,7 @@ export default function Checklist() {
           </div>
         )}
 
-        {/* ── 100% complete ────────────────────────────────── */}
+        {/* ── 100% complete ─────────────────────────────────── */}
         {pct === 100 && (
           <div className="mt-5 rounded-2xl border border-teal-500/20 bg-teal-500/5 overflow-hidden">
             <div className="h-1.5 w-full bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400" />
@@ -306,22 +257,13 @@ export default function Checklist() {
               <div className="text-4xl mb-2">🎉</div>
               <p className="font-display font-bold text-white text-lg">Onboarding Complete!</p>
               <p className="text-slate-400 text-sm mt-1">
-                You have completed every step. HR has been notified and will be in touch shortly.
+                Every step is done. HR has been notified and will be in touch shortly.
               </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs">
-                {[
-                  { icon: '✅', label: 'Profile saved' },
-                  { icon: '✍️', label: 'Contract signed' },
-                  { icon: '📄', label: 'Docs verified' },
-                  { icon: '🪪', label: 'ID card issued' },
-                  { icon: '🎓', label: 'Training done' },
-                ].map(b => (
-                  <span key={b.label}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-400 font-medium">
-                    {b.icon} {b.label}
-                  </span>
-                ))}
-              </div>
+              <button
+                onClick={() => navigate('/onboarding/review')}
+                className="mt-4 px-5 py-2.5 bg-teal-600 hover:bg-teal-500 text-white text-sm font-semibold rounded-xl transition-all inline-flex items-center gap-2">
+                View My Summary →
+              </button>
             </div>
           </div>
         )}
@@ -383,7 +325,7 @@ export default function Checklist() {
                             : 'cursor-default bg-[#0C1A1D] border-white/[0.05]',
                       ].join(' ')}>
 
-                      {/* Circle indicator */}
+                      {/* Circle */}
                       <div className={[
                         'w-5 h-5 rounded-full flex-shrink-0 mt-0.5 flex items-center justify-center border transition-all',
                         item.completed
@@ -437,19 +379,11 @@ export default function Checklist() {
         })}
       </div>
 
-      {/* Modals */}
       {policyModalOpen && (
         <PolicyTrainingModal
           isCompleted={policyDone}
           onClose={() => setPolicyModalOpen(false)}
           onMarkDone={handlePolicyMarkDone}
-        />
-      )}
-      {submitModalOpen && (
-        <FinalSubmitModal
-          onConfirm={handleFinalSubmit}
-          onCancel={() => setSubmitModalOpen(false)}
-          submitting={submitting}
         />
       )}
     </div>
