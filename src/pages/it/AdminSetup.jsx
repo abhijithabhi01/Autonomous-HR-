@@ -208,19 +208,7 @@ export default function AdminSetup() {
         <p className="text-slate-500 text-sm mt-1">Create login accounts for IT and HR administrators</p>
       </div>
 
-      {/* Info banner */}
-      <div className="mb-6 flex items-start gap-3 px-4 py-3 rounded-xl bg-cyan-500/[0.06] border border-cyan-500/15 animate-slide-up opacity-0"
-        style={{ animationFillMode: 'forwards' }}>
-        <span className="text-lg flex-shrink-0 mt-0.5">ℹ️</span>
-        <div>
-          <p className="text-sm font-semibold text-cyan-300">Accounts created directly in Firebase</p>
-          <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-            Credentials are stored in Firebase Authentication. A Firestore profile is written with the correct
-            <code className="text-cyan-300 mx-1">role</code> so the system routes them to the right portal on login —
-            HR → <code className="text-cyan-300">/hr</code>, IT → <code className="text-cyan-300">/it</code>.
-          </p>
-        </div>
-      </div>
+
 
       {/* Forms */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5 animate-slide-up opacity-0"
@@ -243,26 +231,6 @@ export default function AdminSetup() {
         />
       </div>
 
-      {/* Role reference */}
-      <div className="mt-6 p-4 rounded-xl bg-white/[0.02] border border-white/[0.05] animate-slide-up opacity-0"
-        style={{ animationDelay: '160ms', animationFillMode: 'forwards' }}>
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Role → Route mapping</p>
-        <div className="space-y-2">
-          {[
-            { role: 'hr',       icon: '🏢', route: '/hr',         color: 'text-indigo-400',  desc: 'Full HR dashboard — candidates, employees, alerts' },
-            { role: 'it_admin', icon: '🖥️', route: '/it',         color: 'text-cyan-400',    desc: 'IT provisioning + admin setup' },
-            { role: 'employee', icon: '👤', route: '/onboarding', color: 'text-emerald-400', desc: 'Candidate onboarding portal' },
-          ].map(r => (
-            <div key={r.role} className="flex items-center gap-3 text-xs">
-              <span>{r.icon}</span>
-              <code className={`font-mono font-bold w-16 ${r.color}`}>{r.role}</code>
-              <span className="text-slate-600">→</span>
-              <code className="text-slate-400 font-mono">{r.route}</code>
-              <span className="text-slate-600 hidden sm:block">— {r.desc}</span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   )
 }

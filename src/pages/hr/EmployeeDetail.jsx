@@ -526,6 +526,8 @@ export default function EmployeeDetail() {
     flagged:  'bg-amber-500/10 border-amber-500/20',
   }
 
+  console.log(docs);
+  
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto">
       <button onClick={() => navigate(backTo)}
@@ -719,7 +721,7 @@ export default function EmployeeDetail() {
           <div className="p-4 sm:p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { title: 'Payroll Setup',         desc: 'Salary account and payroll configured',      icon: '💰', cat: 'hr',       order: 6, color: 'emerald' },
-              { title: 'System Access Granted', desc: 'Access to required tools and platforms',     icon: '🔑', cat: 'it',       order: 5, color: 'teal' },
+              // { title: 'System Access Granted', desc: 'Access to required tools and platforms',     icon: '🔑', cat: 'it',       order: 5, color: 'teal' },
             ].map(({ title, desc, icon, cat, order, color }) => {
               const isDone    = items.some(i => i.title === title && i.completed)
               const isPending = hrActPending[title]

@@ -7,8 +7,7 @@ const NAV = [
   { to: '/it',           label: 'Active Requests', icon: '🖥️', exact: true },
   { to: '/it/completed', label: 'Completed',        icon: '✅' },
   { to: '/it/alerts',    label: 'Alerts',           icon: '🔔' },
-  { to: '/it/admin',     label: 'Admin Setup',      icon: '⚙️' },
-  { to: '/it/policy',    label: 'Policy Config',    icon: '📄' },
+  // { to: '/it/setup',     label: 'Admin Setup',      icon: '⚙️' },
 ]
 
 function SignOutModal({ user, onConfirm, onCancel, loading }) {
@@ -94,7 +93,7 @@ export default function ITLayout() {
               </svg>
             </div>
             <div>
-              <p className="font-display font-bold text-white text-base leading-none">PeopleOS</p>
+              <p className="font-display font-bold text-white text-base leading-none">D Company</p>
               <p className="text-xs text-slate-600 mt-0.5">IT Admin Portal</p>
             </div>
           </div>

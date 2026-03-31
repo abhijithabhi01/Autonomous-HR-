@@ -369,7 +369,7 @@ function CandidateDocAlerts({ candidate, onNotify, notifyingId, resolveMutation,
     return (
       <AlertCard
         key={alertId}
-        alert={{ id: alertId, type: 'expiry', severity, person_name: candidate.full_name, message }}
+        alert={{ id: alertId, type: 'expiry', severity, candidate_name: candidate.full_name, message }}
         delay={0}
         resolvable={false}
         resolveMutation={resolveMutation}
@@ -396,7 +396,7 @@ function CandidateDocAlerts({ candidate, onNotify, notifyingId, resolveMutation,
 // ── Alert card ────────────────────────────────────────────────
 function AlertCard({ alert, delay = 0, extra, resolveMutation, resolvable = true, resolvedName }) {
   // Use resolvedName (looked-up from candidates list) with fallback to alert.person_name
-  const displayName = resolvedName || alert.person_name
+  const displayName = resolvedName || alert.candidate_name
 
   return (
     <div className="rounded-2xl border p-4 sm:p-5 animate-slide-up opacity-0"
@@ -436,18 +436,18 @@ function AlertCard({ alert, delay = 0, extra, resolveMutation, resolvable = true
       <div className="flex flex-wrap gap-2 pl-12 sm:pl-[52px]">
         {extra}
         {alert.type === 'stalled' && (
-          <button onClick={() => toast.success(`Nudge sent to ${displayName || alert.person_name}`)}
+          <button onClick={() => toast.success(`Nudge sent to ${displayName || alert.candidate_name}`)}
             className="px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg text-xs font-semibold hover:bg-amber-500/20 transition-colors">
             Send Nudge
           </button>
         )}
-        {resolvable && (
+        {/* {resolvable && (
           <button onClick={() => resolveMutation.mutate(alert.id)}
             disabled={resolveMutation.isPending}
             className="px-3 py-1.5 bg-white/[0.03] border border-white/[0.06] text-slate-400 rounded-lg text-xs font-semibold hover:bg-white/[0.06] transition-colors disabled:opacity-40">
             Dismiss
           </button>
-        )}
+        )} */}
       </div>
     </div>
   )
@@ -476,9 +476,9 @@ export default function Alerts() {
       const byId = candidates.find(c => c.id === alert.candidate_id)
       if (byId) return byId
     }
-    if (alert.person_name) {
+    if (alert.candidate_name) {
       return candidates.find(
-        c => c.full_name?.toLowerCase().trim() === alert.person_name.toLowerCase().trim()
+        c => c.full_name?.toLowerCase().trim() === alert.candidate_name.toLowerCase().trim()
       ) || null
     }
     return null
@@ -592,7 +592,7 @@ export default function Alerts() {
                   delay={i * 80}
                   resolvable={false}
                   resolveMutation={resolveMutation}
-                  resolvedName={a.person_name}
+                  resolvedName={a.candidate_name}
                   extra={
                     toEmail ? (
                       <button

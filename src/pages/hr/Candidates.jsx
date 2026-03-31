@@ -98,6 +98,7 @@ function OfferLetterZone({ onExtracted, onFileSelected, file, scanState, flags, 
 
   const s = stateMap[scanState] || stateMap.idle
 
+  console.log() 
   return (
     <div className="col-span-2">
       <label className="block text-xs font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">

@@ -12,13 +12,13 @@ import {
 } from 'firebase/firestore'
 
 export default function ProfileCompletion() {
-  const navigate        = useNavigate()
-  const { user }        = useAuth()
+  const navigate = useNavigate()
+  const { user } = useAuth()
   const completeByTitle = useCompleteChecklistByTitle()
 
-  const [loading,         setLoading]         = useState(false)
-  const [loadingProfile,  setLoadingProfile]  = useState(true)
-  const [uploading,       setUploading]       = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loadingProfile, setLoadingProfile] = useState(true)
+  const [uploading, setUploading] = useState(false)
 
   const [form, setForm] = useState({
     full_name: '',
@@ -48,13 +48,13 @@ export default function ProfileCompletion() {
         if (!snap.exists()) { setLoadingProfile(false); return }
         const data = snap.data()
         setForm({
-          full_name:               data.full_name               || '',
-          phone:                   data.phone                   || '',
-          address:                 data.address                 || '',
-          emergency_contact_name:  data.emergency_contact_name  || '',
+          full_name: data.full_name || '',
+          phone: data.phone || '',
+          address: data.address || '',
+          emergency_contact_name: data.emergency_contact_name || '',
           emergency_contact_phone: data.emergency_contact_phone || '',
-          date_of_birth:           data.date_of_birth           || '',
-          profile_photo_url:       data.profile_photo_url       || null,
+          date_of_birth: data.date_of_birth || '',
+          profile_photo_url: data.profile_photo_url || null,
         })
         if (data.profile_photo_url) setPhotoPreview(data.profile_photo_url)
       } catch (err) {
@@ -82,15 +82,15 @@ export default function ProfileCompletion() {
       // Upload via backend
       const base64 = await new Promise((resolve, reject) => {
         const r = new FileReader()
-        r.onload  = e => resolve(e.target.result.split(',')[1])
+        r.onload = e => resolve(e.target.result.split(',')[1])
         r.onerror = () => reject(new Error('Failed to read file'))
         r.readAsDataURL(file)
       })
-      const base      = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
+      const base = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
       const uploadRes = await fetch(base ? `${base}/api/documents/upload` : '/api/documents/upload', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
+        body: JSON.stringify({
           candidateId: user?.candidate_id || 'profile',
           docType: 'profile_photo',
           base64, mimeType: file.type, fileName: file.name,
@@ -112,13 +112,19 @@ export default function ProfileCompletion() {
     e.preventDefault()
     const phoneRegex = /^[6-9]\d{9}$/
 
-    if (!form.full_name?.trim())   { toast.error('Please enter your full name'); return }
-    if (!form.address?.trim())     { toast.error('Please enter your address'); return }
-    if (!form.date_of_birth)       { toast.error('Please enter your date of birth'); return }
+    if (!form.full_name?.trim()) { toast.error('Please enter your full name'); return }
+    if (!form.address?.trim()) { toast.error('Please enter your address'); return }
+    if (!form.date_of_birth) { toast.error('Please enter your date of birth'); return }
+    if (!form.profile_photo_url) { toast.error('Please upload a profile photo'); return }
+    const age = Math.floor((new Date() - new Date(form.date_of_birth)) / (365.25 * 24 * 60 * 60 * 1000))
 
+    if (age < 18) {
+      toast.error('You must be at least 18 years old')
+      return
+    }
     const phone = form.phone.trim()
-    if (!phone)                    { toast.error('Please enter your phone number'); return }
-    if (!phoneRegex.test(phone))   { toast.error('Enter a valid 10-digit mobile number'); return }
+    if (!phone) { toast.error('Please enter your phone number'); return }
+    if (!phoneRegex.test(phone)) { toast.error('Enter a valid 10-digit mobile number'); return }
 
     if (form.emergency_contact_phone?.trim()) {
       if (!phoneRegex.test(form.emergency_contact_phone.trim())) {
@@ -153,24 +159,24 @@ export default function ProfileCompletion() {
     setLoading(true)
     try {
       await updateDoc(doc(db, 'candidates', candidateId), {
-        full_name:               form.full_name.trim(),
-        phone:                   form.phone.trim(),
-        address:                 form.address.trim(),
-        emergency_contact_name:  form.emergency_contact_name?.trim()  || null,
+        full_name: form.full_name.trim(),
+        phone: form.phone.trim(),
+        address: form.address.trim(),
+        emergency_contact_name: form.emergency_contact_name?.trim() || null,
         emergency_contact_phone: form.emergency_contact_phone?.trim() || null,
-        date_of_birth:           form.date_of_birth,
-        profile_photo_url:       form.profile_photo_url || null,
-        profile_completed:       true,
+        date_of_birth: form.date_of_birth,
+        profile_photo_url: form.profile_photo_url || null,
+        profile_completed: true,
       })
       toast.success('Profile saved!')
 
       // Mark "Profile Completed" in checklist
       completeByTitle.mutate({
         candidateId,
-        title:       'Profile Completed',
+        title: 'Profile Completed',
         description: 'Personal profile and photo uploaded',
-        category:    'hr',
-        sort_order:  0,
+        category: 'hr',
+        sort_order: 0,
       })
 
       // NOTE: ID card is NOT sent here.

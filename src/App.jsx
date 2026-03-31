@@ -26,7 +26,6 @@ import OnboardingReview   from './pages/candidate/OnboardingReview'
 import ITLayout      from './pages/it/ITLayout'
 import Provisioning  from './pages/it/Provisioning'
 import AdminSetup    from './pages/it/AdminSetup'
-import PolicyConfig  from './pages/it/PolicyConfig'
 import ITAlerts from './pages/it/ITAlerts'
 
 export default function App() {
@@ -82,7 +81,7 @@ export default function App() {
           <Route index                  element={<Provisioning showCompleted={false} />} />
           <Route path="completed"       element={<Provisioning showCompleted={true} />} />
           <Route path="setup"           element={<AdminSetup />} />
-          <Route path="policy-config"   element={<PolicyConfig />} />
+          <Route path="alerts"           element={<ITAlerts />} />  
         </Route>
 
         <Route path="*" element={<Navigate to="/login" replace />} />

@@ -120,7 +120,7 @@ export default function Dashboard() {
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${a.severity === 'high' ? 'bg-red-400' : a.severity === 'medium' ? 'bg-amber-400' : 'bg-teal-400'
                           }`} />
-                        <p className="text-xs font-semibold text-slate-300 truncate">{a.person_name}</p>
+                        <p className="text-xs font-semibold text-slate-300 truncate">{a.candidate_name}</p>
                         <StatusBadge status={a.severity} />
                       </div>
                       <p className="text-xs text-slate-500 line-clamp-2 pl-3.5">{a.message}</p>

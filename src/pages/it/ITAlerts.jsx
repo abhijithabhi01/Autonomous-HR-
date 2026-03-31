@@ -1,8 +1,3 @@
-// src/pages/it/ITAlerts.jsx
-// IT portal alerts page.
-// Shows candidates who have completed onboarding (100%) but whose provisioning
-// is not yet finished — laptop, work email, and full system access still needed.
-
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useITReadyAlerts, useUpdateProvisioning } from '../../hooks/useData'

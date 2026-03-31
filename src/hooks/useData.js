@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 // Production:  VITE_BACKEND_URL points to Render backend
 const BASE = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '')
 const api  = (path) => BASE ? `${BASE}${path}` : path
-
+console.log("BASE API URL:", BASE) 
 async function apiFetch(path, options = {}) {
   const res = await fetch(api(path), {
     headers: { 'Content-Type': 'application/json', ...options.headers },
@@ -330,7 +330,7 @@ export function useExpiryAlerts() {
           id:          `doc_${c.id}_${doc.id}`,
           type:        'expiry',
           severity,
-          person_name: c.full_name,
+          candidate_name: c.full_name,
           message,
         }
       })
@@ -368,7 +368,7 @@ export function useDeadlineAlerts() {
         id:          `deadline_${c.id}`,
         type:        'deadline',
         severity,
-        person_name: c.full_name,
+        candidate_name: c.full_name,
         candidate_id: c.id,
         message,
         daysLeft,
@@ -378,6 +378,56 @@ export function useDeadlineAlerts() {
     })
 
   return { data: deadlineAlerts, isLoading }
+}
+
+// ============================================================
+// IT READY ALERTS
+// ── Surfaces candidates who have completed onboarding (100%)
+// ── but whose provisioning request is NOT yet completed.
+// ── This drives the IT portal Alerts tab + sidebar badge.
+// ============================================================
+export function useITReadyAlerts() {
+  const { data: candidates = [],        isLoading: candLoading  } = useCandidates()
+  const { data: provRequests = [],      isLoading: provLoading  } = useProvisioningRequests()
+
+  const isLoading = candLoading || provLoading
+
+  // Build a quick lookup: candidate_id → provisioning request
+  const provMap = Object.fromEntries(provRequests.map(r => [r.candidate_id, r]))
+
+  const alerts = candidates
+    .filter(c => (c.onboarding_progress ?? 0) >= 100)          // fully done onboarding
+    .filter(c => {
+      const req = provMap[c.id]
+      // Alert if no provisioning request at all, or it isn't completed yet
+      return !req || req.status !== 'completed'
+    })
+    .map(c => {
+      const req      = provMap[c.id]
+      const systems  = req?.systems_provisioned || {}
+      const missing  = []
+      if (!systems.laptop) missing.push('Laptop Setup')
+      if (!systems.email)  missing.push('Work Email')
+      // "System Access Granted" maps to all systems being done
+      const allSysDone = ['email','slack','laptop','vpn','jira','hr_system'].every(k => systems[k])
+      if (!allSysDone)    missing.push('System Access Grant')
+
+      return {
+        id:             `it_ready_${c.id}`,
+        candidate_id:   c.id,
+        candidate_name: c.full_name,
+        position:       c.position       || '—',
+        department:     c.department     || '—',
+        work_email:     c.work_email     || req?.work_email || null,
+        provisioning_id: req?.id         || null,
+        provisioning_status: req?.status || 'no_request',
+        systems_provisioned: systems,
+        missing_items:  missing,
+        onboarding_progress: c.onboarding_progress ?? 100,
+      }
+    })
+
+  return { data: alerts, isLoading }
 }
 
 // ============================================================
@@ -474,6 +524,7 @@ export function useRealtimeSync({ pausePolling = false } = {}) {
       debounce('poll', () => {
         queryClient.invalidateQueries({ queryKey: ['candidates'] })
         queryClient.invalidateQueries({ queryKey: ['alerts'] })
+        queryClient.invalidateQueries({ queryKey: ['provisioning_requests'] })
       })
     }
 
